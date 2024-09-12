@@ -1,0 +1,7 @@
+name = "KagomeDSL"
+uuid = "d7336a9d-6a7f-533d-babd-3df937e6f042"
+authors = ["hzxiaxz <hzxiaxz@gmail.com>"]
+version = "0.1.0"
+
+[compat]
+julia = "1.10"
