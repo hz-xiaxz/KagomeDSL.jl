@@ -1,8 +1,6 @@
 using KagomeDSL
 using Test
 
+include("Lattice.jl")
 
-@testset "KagomeDSL.jl" begin
-    @test KagomeDSL.hello_world() == "Hello, World!"
-end
 
