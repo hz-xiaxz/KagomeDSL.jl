@@ -10,5 +10,4 @@ export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice, ns
 include("Lattice.jl")
 export orbitals
 include("Hamiltonian.jl")
-include("MonteCarlo.jl")
 end
