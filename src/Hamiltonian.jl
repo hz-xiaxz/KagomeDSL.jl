@@ -64,7 +64,6 @@ function Hmat(lat::T, χ::Float64, N_up::Int, N_down::Int) where {T<:AbstractLat
     )
 
     # maybe more elegent to modify bondNum function
-    # TODO: add back link here
     link_inter = Dict(
         (3, 3n1 + 1) => -1,
         (3, 3n1 - 1) => -1,
