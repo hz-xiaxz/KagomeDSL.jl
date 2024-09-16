@@ -1,3 +1,4 @@
+using LinearAlgebra
 abstract type AbstractLattice end
 
 # note the license since I'm using code from BloqadeQMC
@@ -26,8 +27,6 @@ function create_distance_matrix(
     r::Array{Array{Float64,1},1},
     PBC::Tuple{Bool,Bool};
     trunc::Float64 = Inf,
-    plotname = "lattice",
-    plotting = false,
 )
     PBC1, PBC2 = PBC
 
@@ -40,11 +39,6 @@ function create_distance_matrix(
 
     a2_length = sqrt(a2[1]^2 + a2[2]^2) # length of a2 vector
     θ = acos(a2[1] / a2_length) # a2 angle from horizontal
-
-    if plotting
-        xs = []
-        ys = []
-    end
 
     # NOT ENDING ON num_cells-1 BECAUSE WE NEED INTER-CELL BONDS
     for i = 1:num_cells
@@ -68,11 +62,6 @@ function create_distance_matrix(
                 site_num_i = site_i + length(r) * (i - 1)
                 ri = r[site_i] + cell1
 
-                if plotting
-                    push!(xs, ri[1])
-                    push!(ys, ri[2])
-                end
-
                 for site_j = 1:length(r)
                     site_num_j = site_j + length(r) * (j - 1)
 
@@ -82,13 +71,6 @@ function create_distance_matrix(
                     end
 
                     rj = r[site_j] + cell2
-
-                    #=
-                    if plotting
-                        push!(xs, rj[1])
-                        push!(ys, rj[2])
-                    end
-                    =#
 
                     Δ = ri - rj
                     Δx, Δy = Δ[1], Δ[2]
@@ -175,17 +157,18 @@ function create_distance_matrix(
             end
         end
     end
-    if plotting
-        plot(xs, ys, seriestype = :scatter)
-        savefig(plotname * ".png")
-        points = hcat(xs, ys)
-        writedlm("coords.CSV", points, ',')
-    end
-
     return dij
 end
 
-create_distance_matrix(n1::Int, n2::Int, a1::Vector{Float64}, a2::Vector{Float64}, r::Array{Array{Float64,1},1}, PBC::Bool; trunc::Float64 = Inf) = create_distance_matrix(n1, n2, a1, a2, r, (PBC, PBC); trunc = trunc)
+create_distance_matrix(
+    n1::Int,
+    n2::Int,
+    a1::Vector{Float64},
+    a2::Vector{Float64},
+    r::Array{Array{Float64,1},1},
+    PBC::Bool;
+    trunc::Float64 = Inf,
+) = create_distance_matrix(n1, n2, a1, a2, r, (PBC, PBC); trunc = trunc)
 
 function Kagome(t::Float64, n1::Int, n2::Int, PBC::Tuple{Bool,Bool}; trunc::Float64 = Inf)
     a = 2 * t
@@ -205,4 +188,62 @@ end
 
 Kagome(t::Float64, n1::Int, n2::Int, PBC::Bool; trunc::Float64 = Inf) =
     Kagome(t, n1, n2, (PBC, PBC); trunc = trunc)
+
+struct DoubleKagome <: AbstractLattice
+    # number of repititions in directions of a1 and a2
+    n1::Int # a1
+    n2::Int # a2
+    # parameter that defines the equilateral triangle side length
+    t::Float64
+    # translation vectors
+    a1::Array{Float64,1}
+    a2::Array{Float64,1}
+    # coordinates of sites inside a unit cell
+    r::Array{Array{Float64,1},1}
+
+    PBC::Tuple{Bool,Bool}
+    distance_matrix::Array{Float64,2}
+end
+
+"""
+double triangle unit cell Kagome lattice
+
+note `n1` here is still the number of repititions of triangle in the `a1` direction, so `n1` is asserted to be even. The total number is `n1 * n2 * 3` sites.
+"""
+function DoubleKagome(
+    t::Float64,
+    n1::Int,
+    n2::Int,
+    PBC::Tuple{Bool,Bool};
+    trunc::Float64 = Inf,
+)
+    @assert n1 % 2 == 0
+    a = 2t
+    a1 = [2a, 0.0]
+    a2 = [0.5a, 0.5√3a]
+
+    # coordinates of each site in the unit cell
+    r1 = [0.0, 0.0]
+    r2 = 0.25 * a1
+    r3 = 0.5 * a2
+    r4 = 0.5 * a1
+    r5 = 0.75 * a1
+    r6 = [2.5t, 0.5√3t]
+    r = [r1, r2, r3, r4, r5, r6]
+
+    distance_matrix = create_distance_matrix(n1 ÷ 2, n2, a1, a2, r, PBC; trunc = trunc)
+
+    return DoubleKagome(n1, n2, t, a1, a2, r, PBC, distance_matrix)
+end
+
+DoubleKagome(t::Float64, n1::Int, n2::Int, PBC::Bool; trunc::Float64 = Inf) =
+    DoubleKagome(t, n1, n2, (PBC, PBC); trunc = trunc)
+
+function nearestNeighbor(lat::AbstractLattice)
+    # select only the upper triangular part of the distance matrix
+    distance_matrix = triu(lat.distance_matrix)
+    # extract all the indices of the minimum distance elements
+    indices = findall(x -> x ≈ lat.t, distance_matrix)
+    return indices
+end
 

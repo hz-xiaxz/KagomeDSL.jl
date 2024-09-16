@@ -3,5 +3,11 @@ uuid = "d7336a9d-6a7f-533d-babd-3df937e6f042"
 authors = ["hzxiaxz <hzxiaxz@gmail.com>"]
 version = "0.1.0"
 
+[deps]
+Carlo = "780c37f4-4e5a-43de-9e79-65c261e525a4"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
 [compat]
+Carlo = "0.2.1"
+LinearAlgebra = "1.11.0"
 julia = "1.10"
