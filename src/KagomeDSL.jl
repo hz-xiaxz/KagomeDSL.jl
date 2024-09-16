@@ -1,5 +1,14 @@
 module KagomeDSL
-export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice
+using BitBasis
+using LinearAlgebra
+using StatsBase
+using Random
+using Carlo
+using HDF5
+
+export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice, ns
 include("Lattice.jl")
+export orbitals
 include("Hamiltonian.jl")
+include("MonteCarlo.jl")
 end

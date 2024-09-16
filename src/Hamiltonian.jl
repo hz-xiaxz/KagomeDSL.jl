@@ -37,12 +37,11 @@ end
 """
     Hmat(lat::AbstractLattice, χ::Float64, N_up::Int, N_down::Int)
 """
-function Hmat(lat::T, χ::Float64, N_up::Int, N_down::Int) where {T<:AbstractLattice}
+function Hmat(lat::T, χ::Float64) where {T<:AbstractLattice}
 
     n1 = lat.n1
     n2 = lat.n2
     ns = n1 * n2 * 3
-    N = N_up + N_down
 
     tunneling = zeros(Float64, ns, ns)
 
@@ -71,11 +70,10 @@ function Hmat(lat::T, χ::Float64, N_up::Int, N_down::Int) where {T<:AbstractLat
         (6, 3n1 + 4) => 1,
         (5, 7) => 1,
         (1, -1) => 1,
-        (1,3-3n1) => -1,
-        (2, 6-3n1) => -1,
-        (4,6-3n1) => 1,
-        (5,9-3n1) => -1,
-
+        (1, 3 - 3n1) => -1,
+        (2, 6 - 3n1) => -1,
+        (4, 6 - 3n1) => 1,
+        (5, 9 - 3n1) => -1,
     )
 
     for bond in nearestNeighbor(lat)
@@ -117,4 +115,60 @@ function Hmat(lat::T, χ::Float64, N_up::Int, N_down::Int) where {T<:AbstractLat
         end
     end
     return tunneling
+end
+
+# temporarily separate the N_up and N_down subspaces
+function orbitals(lat::T, χ::Float64, N_up::Int, N_down::Int) where {T<:AbstractLattice}
+    H_mat = Hmat(lat, χ)
+    # get sampling ensemble U_up and U_down
+    vals, vecs = eigen(H_mat)
+    # select N lowest eigenvectors as the sampling ensemble
+    sorted_indices = sortperm(vals)
+    U_up = vecs[:, sorted_indices[1:N_up]]
+    U_down = vecs[:, sorted_indices[1:N_down]]
+    return U_up, U_down
+end
+
+"""
+
+return ``|x'> = H|x>``  where ``H = -t ∑_{<i,j>} χ_{ij} f_i^† f_j``
+"""
+@inline function getxprime(
+    nn::AbstractArray,
+    H_mat::AbstractMatrix,
+    x::BitStr{N,T},
+) where {N,T}
+    @assert N == 2 * size(H_mat)[1] "x should have the same 2x length as $(size(H_mat)[1]),  got: $N"
+    L = length(x) ÷ 2  # Int division
+    xprime = Dict{typeof(x),Float64}()
+    # consider the spin up case
+    @inbounds for i = 1:L÷2
+        neigh_bond = filter(x -> x[1] == i, nn)
+        for bond in neigh_bond
+            if readbit(x, i) == 1 && readbit(x, bond[2]) == 0
+                _x = x
+                _x &= ~indicator(T, i)
+                _x |= indicator(T, bond[2])
+                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond] # Hopping
+            elseif readbit(x, i) == 0 && readbit(x, bond[2]) == 1
+                _x = x
+                _x &= ~indicator(T, i)
+                _x |= indicator(T, bond[2])
+                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond[2], bond[1]] # Hopping
+            end
+
+            if readbit(x, i + L) == 1 && readbit(x, bond[2] + L) == 0
+                _x = x
+                _x &= ~indicator(T, i + L)
+                _x |= indicator(T, bond[2] + L)
+                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond] # Hopping
+            elseif readbit(x, i + L) == 0 && readbit(x, bond[2] + L) == 1
+                _x = x
+                _x &= ~indicator(T, i + L)
+                _x |= indicator(T, bond[2] + L)
+                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond[2], bond[1]] # Hopping
+            end
+        end
+    end
+    return xprime
 end

@@ -1,4 +1,5 @@
 using LinearAlgebra
+
 abstract type AbstractLattice end
 
 # note the license since I'm using code from BloqadeQMC
@@ -17,6 +18,15 @@ struct Kagome <: AbstractLattice
 
     PBC::Tuple{Bool,Bool}
     distance_matrix::Array{Float64,2}
+    nn::Array{CartesianIndex{2},1}
+end
+
+function nearestNeighbor(lat::AbstractLattice)
+    # select only the upper triangular part of the distance matrix
+    distance_matrix = triu(lat.distance_matrix)
+    # extract all the indices of the minimum distance elements
+    indices = findall(x -> x ≈ lat.t, distance_matrix)
+    return indices
 end
 
 function create_distance_matrix(
@@ -183,7 +193,8 @@ function Kagome(t::Float64, n1::Int, n2::Int, PBC::Tuple{Bool,Bool}; trunc::Floa
 
     distance_matrix = create_distance_matrix(n1, n2, a1, a2, r, PBC; trunc = trunc)
 
-    return Kagome(n1, n2, t, a1, a2, r, PBC, distance_matrix)
+    nn = nearestNeighbor(Kagome(t, n1, n2, PBC))
+    return Kagome(n1, n2, t, a1, a2, r, PBC, distance_matrix, nn)
 end
 
 Kagome(t::Float64, n1::Int, n2::Int, PBC::Bool; trunc::Float64 = Inf) =
@@ -203,6 +214,7 @@ struct DoubleKagome <: AbstractLattice
 
     PBC::Tuple{Bool,Bool}
     distance_matrix::Array{Float64,2}
+    nn::Array{CartesianIndex{2},1}
 end
 
 """
@@ -232,18 +244,13 @@ function DoubleKagome(
     r = [r1, r2, r3, r4, r5, r6]
 
     distance_matrix = create_distance_matrix(n1 ÷ 2, n2, a1, a2, r, PBC; trunc = trunc)
+    nn = nearestNeighbor(DoubleKagome(t, n1, n2, PBC))
 
-    return DoubleKagome(n1, n2, t, a1, a2, r, PBC, distance_matrix)
+    return DoubleKagome(n1, n2, t, a1, a2, r, PBC, distance_matrix, nn)
 end
 
 DoubleKagome(t::Float64, n1::Int, n2::Int, PBC::Bool; trunc::Float64 = Inf) =
     DoubleKagome(t, n1, n2, (PBC, PBC); trunc = trunc)
 
-function nearestNeighbor(lat::AbstractLattice)
-    # select only the upper triangular part of the distance matrix
-    distance_matrix = triu(lat.distance_matrix)
-    # extract all the indices of the minimum distance elements
-    indices = findall(x -> x ≈ lat.t, distance_matrix)
-    return indices
-end
 
+ns(lat::AbstractLattice) = lat.n1 * lat.n2 * 3

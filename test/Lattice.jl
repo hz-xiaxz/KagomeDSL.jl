@@ -4,6 +4,7 @@ using Test
 @testset "KagomeLattice" begin
     # 2,2 is a corner case, don't use it
     K1 = Kagome(1.0, 3, 3, (false, false))
+    @test ns(K1) == 27
     @test size(K1.distance_matrix) == (27, 27)
     # should always read i <= j for distance_matrix[i,j]
 
@@ -22,6 +23,7 @@ using Test
     @test K1.distance_matrix[1, 13] ≈ 2√3
 
     K2 = Kagome(1.0, 3, 3, (true, false))
+    @test ns(K2) == 27
     @test size(K2.distance_matrix) == (27, 27)
 
     # test the diagonal elements are all zeros
@@ -45,6 +47,7 @@ end
     @test_throws AssertionError DKe = DoubleKagome(1.0, 3, 3, (false, false))
 
     DK = DoubleKagome(1.0, 4, 3, (false, false))
+    @test ns(DK) == 36
 
     @test size(DK.distance_matrix) == (36, 36)
 
@@ -66,6 +69,7 @@ end
 @testset "nearestNeighbor" begin
     # write test for nearestNeighbor function
     K1 = Kagome(1.0, 3, 3, (false, false))
+    @test ns(K1) == 27
     nn = nearestNeighbor(K1)
     # test all the CartesianIndex in nn, CartesianIndex(i,j) where i<j
     for ind in nn
