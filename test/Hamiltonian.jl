@@ -57,3 +57,10 @@ end
     @test xprime[k1] == 1.0
     @test xprime[k2] == 1.0
 end
+
+@testset "Gutzwiller" begin
+    x = LongBitStr(vcat(fill(1, 36), fill(0, 36)))
+    @test Gutzwiller(x) == 1
+    x = LongBitStr(vcat(fill(1, 36), fill(0, 35), [1]))
+    @test Gutzwiller(x) == 0 
+end

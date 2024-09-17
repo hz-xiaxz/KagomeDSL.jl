@@ -118,8 +118,7 @@ function Hmat(lat::DoubleKagome, χ::Float64)
 end
 
 # temporarily separate the N_up and N_down subspaces
-function orbitals(lat::T, χ::Float64, N_up::Int, N_down::Int) where {T<:AbstractLattice}
-    H_mat = Hmat(lat, χ)
+function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
     # get sampling ensemble U_up and U_down
     vals, vecs = eigen(H_mat)
     # select N lowest eigenvectors as the sampling ensemble
@@ -129,15 +128,32 @@ function orbitals(lat::T, χ::Float64, N_up::Int, N_down::Int) where {T<:Abstrac
     return U_up, U_down
 end
 
+# what's in the Hamiltonian
+struct Hamiltonian
+    χ::Float64
+    N_up::Int
+    N_down::Int
+    U_up::Matrix{Float64}
+    U_down::Matrix{Float64}
+    H_mat::Matrix{Float64}
+    nn::AbstractArray
+end
+
+function Hamiltonian(χ::Float64, N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
+    H_mat = Hmat(lat, χ)
+    U_up, U_down = orbitals(H_mat, N_up, N_down)
+    nn = lat.nn
+    return Hamiltonian(χ, N_up, N_down, U_up, U_down, H_mat, nn)
+end
+
+
 """
 
 return ``|x'> = H|x>``  where ``H = -t ∑_{<i,j>} χ_{ij} f_i^† f_j``
 """
-@inline function getxprime(
-    nn::AbstractArray,
-    H_mat::AbstractMatrix,
-    x::BitStr{N,T},
-) where {N,T}
+@inline function getxprime(Ham::Hamiltonian, x::BitStr{N,T}) where {N,T}
+    H_mat = Ham.H_mat
+    nn = Ham.nn
     @assert N == 2 * size(H_mat)[1] "x should have the same 2x length as $(size(H_mat)[1]),  got: $N"
     L = length(x) ÷ 2  # Int division
     xprime = Dict{typeof(x),Float64}()
@@ -171,4 +187,81 @@ return ``|x'> = H|x>``  where ``H = -t ∑_{<i,j>} χ_{ij} f_i^† f_j``
         end
     end
     return xprime
+end
+
+@inline function Gutzwiller(x::BitStr{N,T}) where {N,T}
+    L = length(x) ÷ 2
+    @inbounds for i = 1:L
+        if readbit(x, i) == 1 && readbit(x, i + L) == 1
+            return 0
+        end
+    end
+    return 1
+end
+
+"""
+    fast_update(U::AbstractMatrix, Uinvs::AbstractMatrix, newconf::BitStr{N,T}, oldconf::BitStr{N,T}) where {N,T}
+
+Fast computing technique from Becca and Sorella 2017
+"""
+@inline function fast_update(
+    U::AbstractMatrix,
+    Uinvs::AbstractMatrix,
+    newconf::Union{SubDitStr{D,N1,T1},DitStr{D,N1,T1}},
+    oldconf::BitStr{N,T},
+) where {D,N1,N,T,T1}
+    @assert length(newconf) == N "The length of the new configuration should be the same as the old configuration, got: $(length(newconf))(old) and $N(new)"
+    Rl = -1 # if not found should return error
+    k = -1
+    flag = 0
+    @inbounds for i = 1:N
+        if getindex(oldconf, i) == 1 && getindex(newconf, i) == 0
+            Rl = i # the old position of the l-th electron
+            flag += 1
+        end
+        if getindex(newconf, i) == 1 && getindex(oldconf, i) == 0
+            k = i # the new position of the l-th electron, K = R_l'
+            flag += 1
+        end
+        if flag == 2
+            break
+        end
+    end
+    if flag == 0
+        return 1.0
+    end
+    l = sum(oldconf[1:Rl]) # l-th electron
+    ratio = sum(U[k, :] .* Uinvs[:, l])
+    return ratio
+end
+
+@doc raw"""
+
+The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
+"""
+@inline function getOL(Ham::Hamiltonian, conf_up::BitVector, conf_down::BitVector)
+    conf = LongBitStr(vcat(conf_up, conf_down))
+    L = length(conf) ÷ 2
+    OL = 0.0
+    U_upinvs = Ham.U_up[conf_up, :] \ I # do invs more efficiently
+    U_downinvs = Ham.U_down[conf_down, :] \ I
+    xprime = getxprime(Ham, conf)
+    conf_downstr = LongBitStr(conf_down)
+    conf_upstr = LongBitStr(conf_up)
+    @inbounds for (confstr, coff) in pairs(xprime)
+        if Gutzwiller(confstr) == 0
+            continue
+        else
+            OL +=
+                coff *
+                fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr) *
+                fast_update(
+                    Ham.U_down,
+                    U_downinvs,
+                    SubDitStr(confstr, L + 1, 2L),
+                    conf_downstr,
+                )
+        end
+    end
+    return OL
 end
