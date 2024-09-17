@@ -1,6 +1,3 @@
-using KagomeDSL
-using Test
-
 @testset "KagomeLattice" begin
     # 2,2 is a corner case, don't use it
     K1 = Kagome(1.0, 3, 3, (false, false))
@@ -70,7 +67,7 @@ end
     # write test for nearestNeighbor function
     K1 = Kagome(1.0, 3, 3, (false, false))
     @test ns(K1) == 27
-    nn = nearestNeighbor(K1)
+    nn = K1.nn
     # test all the CartesianIndex in nn, CartesianIndex(i,j) where i<j
     for ind in nn
         @test ind[1] < ind[2]

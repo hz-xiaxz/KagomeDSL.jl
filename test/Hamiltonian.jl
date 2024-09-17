@@ -1,6 +1,4 @@
-using KagomeDSL
-using Test
-using LinearAlgebra
+using BitBasis
 
 @testset "Hamiltonian" begin
     DK = DoubleKagome(1.0, 4, 3, (false, false))
@@ -17,7 +15,7 @@ using LinearAlgebra
     end
     @test H[3, 13] == -1
 
-    DK2 = DoubleKagome(1.0, 4, 3, (true, false))
+    DK2 = KagomeDSL.DoubleKagome(1.0, 4, 3, (true, false))
     H2 = KagomeDSL.Hmat(DK2, 1.0)
     @test isempty(findall(x -> !(x ≈ 0), H2 - H2'))
     @test H2 ≈ H2'
@@ -42,4 +40,20 @@ end
     # check U_up is Unitary
     @test size(U_up) == (num, N_up)
     @test size(U_down) == (num, N_down)
+end
+
+@testset "getxprime" begin
+    # TODO More careful tests here
+    DK = DoubleKagome(1.0, 4, 3, (false, false))
+    H = KagomeDSL.Hmat(DK, 1.0)
+    x = LongBitStr(vcat(fill(1, 1), fill(0, 71)))
+    xprime = KagomeDSL.getxprime(DK.nn, H, x)
+    @test length(keys(xprime)) == 2
+    @test !(BitBasis.LongBitStr(vcat([1], fill(0, 71))) in keys(xprime))
+    k1 = BitBasis.LongBitStr(vcat(fill(0, 1), [1], fill(0, 70)))
+    @test k1 in keys(xprime)
+    k2 = BitBasis.LongBitStr(vcat(fill(0, 2), [1], fill(0, 69)))
+    @test k2 in keys(xprime)
+    @test xprime[k1] == 1.0
+    @test xprime[k2] == 1.0
 end

@@ -21,14 +21,6 @@ struct Kagome <: AbstractLattice
     nn::Array{CartesianIndex{2},1}
 end
 
-function nearestNeighbor(lat::AbstractLattice)
-    # select only the upper triangular part of the distance matrix
-    distance_matrix = triu(lat.distance_matrix)
-    # extract all the indices of the minimum distance elements
-    indices = findall(x -> x ≈ lat.t, distance_matrix)
-    return indices
-end
-
 function create_distance_matrix(
     n1::Int,
     n2::Int,
@@ -193,7 +185,9 @@ function Kagome(t::Float64, n1::Int, n2::Int, PBC::Tuple{Bool,Bool}; trunc::Floa
 
     distance_matrix = create_distance_matrix(n1, n2, a1, a2, r, PBC; trunc = trunc)
 
-    nn = nearestNeighbor(Kagome(t, n1, n2, PBC))
+    # extract all the indices of the minimum distance elements
+    nn = findall(x -> x ≈ t, triu(distance_matrix))
+
     return Kagome(n1, n2, t, a1, a2, r, PBC, distance_matrix, nn)
 end
 
@@ -244,8 +238,10 @@ function DoubleKagome(
     r = [r1, r2, r3, r4, r5, r6]
 
     distance_matrix = create_distance_matrix(n1 ÷ 2, n2, a1, a2, r, PBC; trunc = trunc)
-    nn = nearestNeighbor(DoubleKagome(t, n1, n2, PBC))
 
+    tri_distance_matrix = triu(distance_matrix)
+    # extract all the indices of the minimum distance elements
+    nn = findall(x -> x ≈ t, tri_distance_matrix)
     return DoubleKagome(n1, n2, t, a1, a2, r, PBC, distance_matrix, nn)
 end
 

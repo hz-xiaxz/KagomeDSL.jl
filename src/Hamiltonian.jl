@@ -37,7 +37,7 @@ end
 """
     Hmat(lat::AbstractLattice, χ::Float64, N_up::Int, N_down::Int)
 """
-function Hmat(lat::T, χ::Float64) where {T<:AbstractLattice}
+function Hmat(lat::DoubleKagome, χ::Float64)
 
     n1 = lat.n1
     n2 = lat.n2
@@ -76,7 +76,7 @@ function Hmat(lat::T, χ::Float64) where {T<:AbstractLattice}
         (5, 9 - 3n1) => -1,
     )
 
-    for bond in nearestNeighbor(lat)
+    for bond in lat.nn
         s1, s2 = Tuple(bond)
         # consider in-cell cases
         if (s1 - 1) ÷ 6 == (s2 - 1) ÷ 6
@@ -152,8 +152,8 @@ return ``|x'> = H|x>``  where ``H = -t ∑_{<i,j>} χ_{ij} f_i^† f_j``
                 xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond] # Hopping
             elseif readbit(x, i) == 0 && readbit(x, bond[2]) == 1
                 _x = x
-                _x &= ~indicator(T, i)
-                _x |= indicator(T, bond[2])
+                _x &= ~indicator(T, bond[2])
+                _x |= indicator(T, i)
                 xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond[2], bond[1]] # Hopping
             end
 
@@ -164,8 +164,8 @@ return ``|x'> = H|x>``  where ``H = -t ∑_{<i,j>} χ_{ij} f_i^† f_j``
                 xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond] # Hopping
             elseif readbit(x, i + L) == 0 && readbit(x, bond[2] + L) == 1
                 _x = x
-                _x &= ~indicator(T, i + L)
-                _x |= indicator(T, bond[2] + L)
+                _x &= ~indicator(T, bond[2] + L)
+                _x |= indicator(T, i + L)
                 xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond[2], bond[1]] # Hopping
             end
         end
