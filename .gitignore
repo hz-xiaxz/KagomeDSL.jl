@@ -11,3 +11,4 @@ docs/build/
 env
 node_modules
 _research/
+data/
