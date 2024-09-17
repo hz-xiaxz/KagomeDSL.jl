@@ -35,7 +35,8 @@ end
     χ = 1.0
     N_up = 18
     N_down = 18
-    U_up, U_down = orbitals(DK2, χ, N_up, N_down)
+    Han = KagomeDSL.Hamiltonian(χ, N_up, N_down, DK2)
+    U_up, U_down = Han.U_up, Han.U_down
     num = ns(DK2)
     # check U_up is Unitary
     @test size(U_up) == (num, N_up)
@@ -45,9 +46,9 @@ end
 @testset "getxprime" begin
     # TODO More careful tests here
     DK = DoubleKagome(1.0, 4, 3, (false, false))
-    H = KagomeDSL.Hmat(DK, 1.0)
+    ham = KagomeDSL.Hamiltonian(1.0, 18, 18, DK)
     x = LongBitStr(vcat(fill(1, 1), fill(0, 71)))
-    xprime = KagomeDSL.getxprime(DK.nn, H, x)
+    xprime = KagomeDSL.getxprime(ham, x)
     @test length(keys(xprime)) == 2
     @test !(BitBasis.LongBitStr(vcat([1], fill(0, 71))) in keys(xprime))
     k1 = BitBasis.LongBitStr(vcat(fill(0, 1), [1], fill(0, 70)))
@@ -60,7 +61,7 @@ end
 
 @testset "Gutzwiller" begin
     x = LongBitStr(vcat(fill(1, 36), fill(0, 36)))
-    @test Gutzwiller(x) == 1
+    @test KagomeDSL.Gutzwiller(x) == 1
     x = LongBitStr(vcat(fill(1, 36), fill(0, 35), [1]))
-    @test Gutzwiller(x) == 0 
+    @test KagomeDSL.Gutzwiller(x) == 0
 end
