@@ -240,6 +240,13 @@ end
 The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
 """
 @inline function getOL(Ham::Hamiltonian, conf_up::BitVector, conf_down::BitVector)
+    @assert length(conf_up) == length(conf_down) "The length of the up and down configurations should be the same, got: $(length(conf_up)) and $(length(conf_down))"
+    L = length(conf_up)
+    @inbounds for i = 1:L
+        if conf_up[i] == 1 && conf_down[i] == 1
+            return 0.0
+        end
+    end
     conf = LongBitStr(vcat(conf_up, conf_down))
     L = length(conf) ÷ 2
     OL = 0.0
