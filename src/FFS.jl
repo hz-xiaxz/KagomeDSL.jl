@@ -24,10 +24,9 @@ Employing Fast Fermion Sampling Algorithm to sample free Fermions
         sampled[x_new] = true
         avail[x_new] = false
         # now compute next n_vec
-        # I suggest not using the gaussian elimination
         U_x = U[sampled, 1:i]
         B = -U[1:i, i + 1]
-        n_vec = normalize([U_x \ B; 1])
+        n_vec = normalize([qr(U_x,ColumnNorm() )\ B; 1])
     end
     prob = abs2.((view(U, :, 1:N) * n_vec)[avail])
     x_new = sample(r, groud_set[avail], Weights(prob))

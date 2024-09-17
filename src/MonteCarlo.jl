@@ -19,7 +19,7 @@ function MC(params::AbstractDict)
     Ham = Hamiltonian(χ, N_up, N_down, lat)
     rng = Random.Xoshiro(42)
     conf = vcat(FFS(rng, Ham.U_up), FFS(rng, Ham.U_down))
-    return MC(Hamiltonian, conf)
+    return MC(Ham, conf)
 end
 
 """
@@ -49,27 +49,35 @@ Initialize the Monte Carlo object
     mc.conf = conf
 end
 
-@inline function Carlo.sweep!(mc::MC{B}, ctx::MCContext) where {B}
+@inline function Carlo.sweep!(mc::MC, ctx::MCContext)
     mc.conf = vcat(FFS(ctx.rng, mc.Ham.U_up), FFS(ctx.rng, mc.Ham.U_down))
     return nothing
 end
 
-@inline function Carlo.measure!(mc::MC{B}, ctx::MCContext) where {B}
+@inline function Carlo.measure!(mc::MC, ctx::MCContext)
     conf_up = FFS(ctx.rng, mc.Ham.U_up)
     conf_down = FFS(ctx.rng, mc.Ham.U_down)
-    OL = getOL(mc.ham, conf_up, conf_down)
+    OL = getOL(mc.Ham, conf_up, conf_down)
     measure!(ctx, :OL, OL)
 
     return nothing
 end
 
+@inline function Carlo.register_evaluables(
+    ::Type{MC},
+    eval::Evaluator,
+    params::AbstractDict,
+)
 
-@inline function Carlo.write_checkpoint(mc::MC{B}, out::HDF5.Group) where {B}
+    return nothing
+end
+
+@inline function Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
     out["conf"] = Vector{Bool}(mc.conf)
     return nothing
 end
 
-@inline function Carlo.read_checkpoint!(mc::MC{B}, in::HDF5.Group) where {B}
+@inline function Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
     mc.conf = BitVector(read(in, "conf"))
     return nothing
 end
