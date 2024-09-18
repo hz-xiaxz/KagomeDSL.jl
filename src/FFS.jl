@@ -43,10 +43,14 @@ Employing Fast Fermion Sampling Algorithm to sample free Fermions
         # No you should pivot first and find the "1"
         U_x = U[sampled, 1:i+1]
         # to deal with instability
-        n_vec = mynullspace(U_x)
+        try
+            n_vec = nullspace(U_x)
+        catch
+            n_vec = mynullspace(U_x)
+        end
     end
     prob = abs2.((view(U, :, 1:N)*n_vec)[avail])
-    x_new = sample(r, groud_set[avail], Weikghts(prob))
+    x_new = sample(r, groud_set[avail], Weights(prob))
     sampled[x_new] = true
     avail[x_new] = false
     return sampled
