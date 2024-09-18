@@ -19,25 +19,24 @@ function setTunnel!(
     s2::Int,
     PBCs1::Int,
     PBCs2::Int,
-    χ::Float64,
     link::Dict,
 )
     bond_num = bondNum(PBCs1, PBCs2)
     if haskey(link, bond_num)
         # a bit hacky `=`
-        Tunneling[s1, s2] = χ * link[bond_num]
+        Tunneling[s1, s2] = link[bond_num] * 1.0
     end
 
     bond_num2 = bondNum(PBCs2, PBCs1)
     if haskey(link, bond_num2)
-        Tunneling[s2, s1] = χ * link[bond_num2]
+        Tunneling[s2, s1] = 1.0 * link[bond_num2]
     end
 end
 
 """
     Hmat(lat::AbstractLattice, χ::Float64, N_up::Int, N_down::Int)
 """
-function Hmat(lat::DoubleKagome, χ::Float64)
+function Hmat(lat::DoubleKagome)
 
     n1 = lat.n1
     n2 = lat.n2
@@ -80,7 +79,7 @@ function Hmat(lat::DoubleKagome, χ::Float64)
         s1, s2 = Tuple(bond)
         # consider in-cell cases
         if (s1 - 1) ÷ 6 == (s2 - 1) ÷ 6
-            setTunnel!(tunneling, s1, s2, s1, s2, χ, link_in)
+            setTunnel!(tunneling, s1, s2, s1, s2, link_in)
         end
         # consider inter-cell cases
         # consider PBC
@@ -89,26 +88,26 @@ function Hmat(lat::DoubleKagome, χ::Float64)
 
         if (s1 - 1) ÷ 6 != (s2 - 1) ÷ 6
             if lat.PBC == (false, false)
-                setTunnel!(tunneling, s1, s2, s1, s2, χ, link_inter)
+                setTunnel!(tunneling, s1, s2, s1, s2, link_inter)
 
             elseif lat.PBC == (true, false)
                 for PBCs1 in (s1 - 3n1, s1 + 3n1, s1)
                     for PBCs2 in (s2 - 3n1, s2 + 3n1, s2)
-                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, χ, link_inter)
+                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter)
                     end
                 end
 
             elseif lat.PBC == (false, true)
                 for PBCs1 in (s1 - 3ns, s1 + 3ns, s1)
                     for PBCs2 in (s2 - 3ns, s2 + 3ns, s2)
-                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, χ, link_inter)
+                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter)
                     end
                 end
 
             elseif lat.PBC == (true, true)
                 for PBCs1 in (s1 - 3n1, s1 + 3n1, s1 - 3ns, s1 + 3ns, s1)
                     for PBCs2 in (s1 - 3n1, s1 + 3n1, s2 - 3ns, s2 + 3ns, s2)
-                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, χ, link_inter)
+                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter)
                     end
                 end
             end
@@ -118,32 +117,24 @@ function Hmat(lat::DoubleKagome, χ::Float64)
 end
 
 # temporarily separate the N_up and N_down subspaces
-function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
+function orbitals(H_mat::Matrix{Float64})
     # get sampling ensemble U_up and U_down
     vals, vecs = eigen(H_mat)
-    # select N lowest eigenvectors as the sampling ensemble
-    sorted_indices = sortperm(vals)
-    U_up = vecs[:, sorted_indices[1:N_up]]
-    U_down = vecs[:, sorted_indices[1:N_down]]
-    return U_up, U_down
+    return vecs
 end
 
 # what's in the Hamiltonian
 struct Hamiltonian
-    χ::Float64
-    N_up::Int
-    N_down::Int
-    U_up::Matrix{Float64}
-    U_down::Matrix{Float64}
+    U::Matrix{Float64}
     H_mat::Matrix{Float64}
     nn::AbstractArray
 end
 
-function Hamiltonian(χ::Float64, N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
-    H_mat = Hmat(lat, χ)
-    U_up, U_down = orbitals(H_mat, N_up, N_down)
+function Hamiltonian(lat::T) where {T<:AbstractLattice}
+    H_mat = Hmat(lat)
+    U = orbitals(H_mat)
     nn = lat.nn
-    return Hamiltonian(χ, N_up, N_down, U_up, U_down, H_mat, nn)
+    return Hamiltonian(U, H_mat, nn)
 end
 
 
@@ -239,35 +230,23 @@ end
 
 The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
 """
-@inline function getOL(Ham::Hamiltonian, conf_up::BitVector, conf_down::BitVector)
-    @assert length(conf_up) == length(conf_down) "The length of the up and down configurations should be the same, got: $(length(conf_up)) and $(length(conf_down))"
-    L = length(conf_up)
+@inline function getOL(Ham::Hamiltonian, conf::BitVector)
+    L = length(conf) ÷ 2
     @inbounds for i = 1:L
-        if conf_up[i] == 1 && conf_down[i] == 1
+        if conf[i] == 1 && conf[i+L] == 1
             return 0.0
         end
     end
     conf = LongBitStr(vcat(conf_up, conf_down))
-    L = length(conf) ÷ 2
     OL = 0.0
-    U_upinvs = Ham.U_up[conf_up, :] \ I # do invs more efficiently
-    U_downinvs = Ham.U_down[conf_down, :] \ I
+    U_invs = Ham.U[conf, :] \ I # do invs more efficiently
     xprime = getxprime(Ham, conf)
-    conf_downstr = LongBitStr(conf_down)
-    conf_upstr = LongBitStr(conf_up)
+    old_conf = LongBitStr(conf)
     @inbounds for (confstr, coff) in pairs(xprime)
         if Gutzwiller(confstr) == 0
             continue
         else
-            OL +=
-                coff *
-                fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr) *
-                fast_update(
-                    Ham.U_down,
-                    U_downinvs,
-                    SubDitStr(confstr, L + 1, 2L),
-                    conf_downstr,
-                )
+            OL += coff * fast_update(Ham.U, U_invs, confstr, conf)
         end
     end
     return OL

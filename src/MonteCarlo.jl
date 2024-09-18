@@ -13,12 +13,9 @@ function MC(params::AbstractDict)
     n2 = params[:n2]
     PBC = params[:PBC]
     lat = DoubleKagome(1.0, n1, n2, PBC)
-    N_up = params[:N_up]
-    N_down = params[:N_down]
-    χ = params[:χ]
-    Ham = Hamiltonian(χ, N_up, N_down, lat)
-    rng = Random.Xoshiro(42)
-    conf = vcat(FFS(rng, Ham.U_up), FFS(rng, Ham.U_down))
+    Ham = Hamiltonian(lat)
+    rng = Random.Xoshiro(43)
+    conf = FFS(rng, Ham.U)
     return MC(Ham, conf)
 end
 
@@ -30,34 +27,25 @@ Initialize the Monte Carlo object
 * `n1` : `Int` number of cells in x direction
 * `n2` : `Int` number of cells in y direction
 * `PBC` : `Tuple{Bool,2}` boundary condition, e.g. (false, false)
-* `χ` : `Float64` hopping strength
-* `N_up` : `Int` number of up spinons
-* `N_down` : `Int` number of down spinons
 """
 @inline function Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
     PBC = params[:PBC]
     lat = DoubleKagome(1.0, n1, n2, PBC)
-    N_up = params[:N_up]
-    N_down = params[:N_down]
-    χ = params[:χ]
-    Ham = Hamiltonian(χ, N_up, N_down, lat)
-    rng = Random.Xoshiro(42)
+    Ham = Hamiltonian(lat)
+    rng = Random.Xoshiro(43)
     ctx.rng = rng
-    conf = vcat(FFS(rng, Ham.U_up), FFS(rng, Ham.U_down))
-    mc.conf = conf
+    mc.conf = FFS(rng, Ham.U)
 end
 
 @inline function Carlo.sweep!(mc::MC, ctx::MCContext)
-    mc.conf = vcat(FFS(ctx.rng, mc.Ham.U_up), FFS(ctx.rng, mc.Ham.U_down))
+    mc.conf = FFS(ctx.rng, mc.Ham.U)
     return nothing
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
-    conf_up = FFS(ctx.rng, mc.Ham.U_up)
-    conf_down = FFS(ctx.rng, mc.Ham.U_down)
-    OL = getOL(mc.Ham, conf_up, conf_down)
+    OL = getOL(mc.Ham, mc.conf)
     measure!(ctx, :OL, OL)
 
     return nothing

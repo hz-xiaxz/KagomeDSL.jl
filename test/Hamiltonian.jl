@@ -2,7 +2,7 @@ using BitBasis
 
 @testset "Hamiltonian" begin
     DK = DoubleKagome(1.0, 4, 3, (false, false))
-    H = KagomeDSL.Hmat(DK, 1.0)
+    H = KagomeDSL.Hmat(DK)
     # check H is Hermitian
     @test H ≈ H'
     @test isempty(findall(x -> !(x ≈ 0), H - H'))
@@ -16,7 +16,7 @@ using BitBasis
     @test H[3, 13] == -1
 
     DK2 = KagomeDSL.DoubleKagome(1.0, 4, 3, (true, false))
-    H2 = KagomeDSL.Hmat(DK2, 1.0)
+    H2 = KagomeDSL.Hmat(DK2)
     @test isempty(findall(x -> !(x ≈ 0), H2 - H2'))
     @test H2 ≈ H2'
 
@@ -35,18 +35,17 @@ end
     χ = 1.0
     N_up = 18
     N_down = 18
-    Han = KagomeDSL.Hamiltonian(χ, N_up, N_down, DK2)
-    U_up, U_down = Han.U_up, Han.U_down
+    Han = KagomeDSL.Hamiltonian(DK2)
+    U = Han.U
     num = ns(DK2)
     # check U_up is Unitary
-    @test size(U_up) == (num, N_up)
-    @test size(U_down) == (num, N_down)
+    @test size(U) == (num, num)
 end
 
 @testset "getxprime" begin
     # TODO More careful tests here
     DK = DoubleKagome(1.0, 4, 3, (false, false))
-    ham = KagomeDSL.Hamiltonian(1.0, 18, 18, DK)
+    ham = KagomeDSL.Hamiltonian(DK)
     x = LongBitStr(vcat(fill(1, 1), fill(0, 71)))
     xprime = KagomeDSL.getxprime(ham, x)
     @test length(keys(xprime)) == 2
