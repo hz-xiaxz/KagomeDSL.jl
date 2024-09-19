@@ -1,6 +1,7 @@
 mutable struct MC <: AbstractMC
     Ham::Hamiltonian
-    conf::BitVector
+    conf_up::BitVector
+    conf_down::BitVector
 end
 
 """
@@ -18,8 +19,9 @@ function MC(params::AbstractDict)
     χ = params[:χ]
     Ham = Hamiltonian(χ, N_up, N_down, lat)
     rng = Random.Xoshiro(42)
-    conf = vcat(FFS(rng, Ham.U_up), FFS(rng, Ham.U_down))
-    return MC(Ham, conf)
+    conf_up = FFS(rng, Ham.U_up)
+    conf_down = FFS(rng, Ham.U_down)
+    return MC(Ham, conf_up, conf_down)
 end
 
 """
@@ -43,21 +45,19 @@ Initialize the Monte Carlo object
     N_down = params[:N_down]
     χ = params[:χ]
     Ham = Hamiltonian(χ, N_up, N_down, lat)
-    rng = Random.Xoshiro(42)
-    ctx.rng = rng
-    conf = vcat(FFS(rng, Ham.U_up), FFS(rng, Ham.U_down))
-    mc.conf = conf
+    ctx.rng = Random.Xoshiro(42)
+    mc.conf_up = FFS(ctx.rng, Ham.U_up)
+    mc.conf_down = FFS(ctx.rng, Ham.U_down)
 end
 
 @inline function Carlo.sweep!(mc::MC, ctx::MCContext)
-    mc.conf = vcat(FFS(ctx.rng, mc.Ham.U_up), FFS(ctx.rng, mc.Ham.U_down))
+    mc.conf_up = FFS(ctx.rng, mc.Ham.U_up)
+    mc.conf_down = FFS(ctx.rng, mc.Ham.U_down)
     return nothing
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
-    conf_up = FFS(ctx.rng, mc.Ham.U_up)
-    conf_down = FFS(ctx.rng, mc.Ham.U_down)
-    OL = getOL(mc.Ham, conf_up, conf_down)
+    OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
     measure!(ctx, :OL, OL)
 
     return nothing
@@ -73,11 +73,13 @@ end
 end
 
 @inline function Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
-    out["conf"] = Vector{Bool}(mc.conf)
+    out["conf_up"] = Vector{Bool}(mc.conf_up)
+    out["conf_down"] = Vector{Bool}(mc.conf_down)
     return nothing
 end
 
 @inline function Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
-    mc.conf = BitVector(read(in, "conf"))
+    mc.conf_up = BitVector(read(in, "conf_up"))
+    mc.conf_down = BitVector(read(in, "conf_down"))
     return nothing
 end
