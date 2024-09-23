@@ -222,6 +222,8 @@ Fast computing technique from Becca and Sorella 2017
         return 1.0
     end
     l = sum(oldconf[1:Rl]) # l-th electron
+    @show oldconf
+    @show newconf
     ratio = sum(U[k, :] .* Uinvs[:, l])
     return ratio
 end
