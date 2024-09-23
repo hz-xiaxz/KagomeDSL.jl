@@ -65,7 +65,7 @@ end
 
 @testset "nearestNeighbor" begin
     # write test for nearestNeighbor function
-    K1 = Kagome(1.0, 3, 3, (false, false))
+    K1 = Kagome(1.0, 3, 3, (true, false))
     @test ns(K1) == 27
     nn = K1.nn
     # test all the CartesianIndex in nn, CartesianIndex(i,j) where i<j
