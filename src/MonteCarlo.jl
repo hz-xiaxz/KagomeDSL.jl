@@ -16,8 +16,7 @@ function MC(params::AbstractDict)
     lat = DoubleKagome(1.0, n1, n2, PBC)
     N_up = params[:N_up]
     N_down = params[:N_down]
-    χ = params[:χ]
-    Ham = Hamiltonian(χ, N_up, N_down, lat)
+    Ham = Hamiltonian(lat)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     init_conf = zeros(Bool, ns)
@@ -89,7 +88,7 @@ end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     # get E
-    OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
+    OL = getOL(mc.Ham, vcat(mc.conf_up, mc.conf_down))
     measure!(ctx, :OL, OL)
     return nothing
 end

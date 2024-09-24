@@ -116,7 +116,6 @@ function Hmat(lat::DoubleKagome)
     return tunneling
 end
 
-# temporarily separate the N_up and N_down subspaces
 function orbitals(H_mat::Matrix{Float64})
     # get sampling ensemble U_up and U_down
     vals, vecs = eigen(H_mat)
@@ -222,8 +221,6 @@ Fast computing technique from Becca and Sorella 2017
         return 1.0
     end
     l = sum(oldconf[1:Rl]) # l-th electron
-    @show oldconf
-    @show newconf
     ratio = sum(U[k, :] .* Uinvs[:, l])
     return ratio
 end
@@ -239,16 +236,16 @@ The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
             return 0.0
         end
     end
-    conf = LongBitStr(vcat(conf_up, conf_down))
+    strconf = LongBitStr(conf)
     OL = 0.0
     U_invs = Ham.U[conf, :] \ I # do invs more efficiently
-    xprime = getxprime(Ham, conf)
+    xprime = getxprime(Ham, strconf)
     old_conf = LongBitStr(conf)
     @inbounds for (confstr, coff) in pairs(xprime)
         if Gutzwiller(confstr) == 0
             continue
         else
-            OL += coff * fast_update(Ham.U, U_invs, confstr, conf)
+            OL += coff * fast_update(Ham.U, U_invs, confstr, old_conf)
         end
     end
     return OL
