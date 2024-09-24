@@ -5,10 +5,7 @@ using StatsBase
 using Random
 using Carlo
 using HDF5
-using GenericLinearAlgebra
 
-export FFS
-include("FFS.jl")
 
 export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice, ns
 include("Lattice.jl")

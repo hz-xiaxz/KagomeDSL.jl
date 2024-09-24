@@ -49,19 +49,33 @@ end
     ham = KagomeDSL.Hamiltonian(1.0, 18, 18, DK)
     x = LongBitStr(vcat(fill(1, 1), fill(0, 71)))
     xprime = KagomeDSL.getxprime(ham, x)
-    @test length(keys(xprime)) == 2
-    @test !(BitBasis.LongBitStr(vcat([1], fill(0, 71))) in keys(xprime))
-    k1 = BitBasis.LongBitStr(vcat(fill(0, 1), [1], fill(0, 70)))
-    @test k1 in keys(xprime)
-    k2 = BitBasis.LongBitStr(vcat(fill(0, 2), [1], fill(0, 69)))
-    @test k2 in keys(xprime)
-    @test xprime[k1] == 1.0
-    @test xprime[k2] == 1.0
+    @test length(keys(xprime)) == 1
+    @test xprime[x] == 0.0
+
+    x1 = LongBitStr(vcat([1], fill(0, 36), [1], fill(0, 34)))
+    xprime1 = KagomeDSL.getxprime(ham, x1)
+    @test length(keys(xprime1)) == 2
+    @test xprime1[x1] == -0.5
+    k1 = LongBitStr(vcat([0], [1], fill(0, 34), [1], fill(0, 35)))
+    @test k1 in keys(xprime1)
+    @test xprime1[k1] == 1.0 / 2.0 * 2
 end
+
+@testset "getOL" begin
+    DK = DoubleKagome(1.0, 2, 2, (false, false))
+    ham = KagomeDSL.Hamiltonian(1.0, 6, 6, DK)
+    # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [1,0,1,1,1,1,1,0,0,0,0,0]
+    up = BitVector(vcat([1], [0], fill(1, 5), fill(0, 5)))
+    @test KagomeDSL.getOL(ham, up, up) == 0.0
+    # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [0,1,0,0,0,0,0,1,1,1,1,1]
+    down = BitVector(vcat([0], [1], fill(0, 5), fill(1, 5)))
+    @test KagomeDSL.getOL(ham, up, down) != 0.0
+end
+
 
 @testset "Gutzwiller" begin
     x = LongBitStr(vcat(fill(1, 36), fill(0, 36)))
-    @test KagomeDSL.Gutzwiller(x) == 1
+    @test KagomeDSL.Gutzwiller(x) == 1.0
     x = LongBitStr(vcat(fill(1, 36), fill(0, 35), [1]))
-    @test KagomeDSL.Gutzwiller(x) == 0
+    @test KagomeDSL.Gutzwiller(x) == 0.0
 end

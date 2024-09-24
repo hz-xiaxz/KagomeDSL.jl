@@ -19,8 +19,11 @@ function MC(params::AbstractDict)
     χ = params[:χ]
     Ham = Hamiltonian(χ, N_up, N_down, lat)
     rng = Random.Xoshiro(42)
-    conf_up = FFS(rng, Ham.U_up)
-    conf_down = FFS(rng, Ham.U_down)
+    ns = n1 * n2 * 3
+    init_conf = zeros(Bool, ns)
+    init_conf[randperm(rng, ns)[1:N_up]] .= true
+    conf_up = BitVector(init_conf)
+    conf_down = fill(true, ns) - conf_up
     return MC(Ham, conf_up, conf_down)
 end
 
@@ -46,13 +49,93 @@ Initialize the Monte Carlo object
     χ = params[:χ]
     Ham = Hamiltonian(χ, N_up, N_down, lat)
     ctx.rng = Random.Xoshiro(42)
-    mc.conf_up = FFS(ctx.rng, Ham.U_up)
-    mc.conf_down = FFS(ctx.rng, Ham.U_down)
+    ns = n1 * n2 * 3
+    mc.conf_up = zeros(Bool, ns)
+    mc.conf_up[randperm(ctx.rng, ns)[1:N_up]] .= true
+    mc.conf_up = BitVector(mc.conf_up)
+    mc.conf_down = fill(true, ns) - mc.conf_up
+end
+
+function getNeigh(rng, ns::Int, nn::AbstractArray)
+    while true
+        i = rand(rng, 1:ns)
+        neigh = filter(x -> x[1] == i, nn)
+        if length(neigh) == 0
+            continue
+        else
+            site = sample(rng, neigh)[2]
+            return i, site
+        end
+    end
+end
+
+function getRatio(
+    U::AbstractMatrix,
+    Uinvs::AbstractMatrix,
+    oldconf::BitVector,
+    i::Int,
+    site::Int,
+)
+    l = sum(oldconf[1:i])
+    return sum(U[site, :] .* Uinvs[:, l])
 end
 
 @inline function Carlo.sweep!(mc::MC, ctx::MCContext)
-    mc.conf_up = FFS(ctx.rng, mc.Ham.U_up)
-    mc.conf_down = FFS(ctx.rng, mc.Ham.U_down)
+    # should perform MCMC here
+    # MCMC scheme, generate a Mott state
+    # the electrons are only allowed to swap between different spins and from an occupied site to an unoccupied site
+    nn = mc.Ham.nn
+    ns = length(mc.conf_up)
+    oldconfup = copy(mc.conf_up)
+    oldconfdown = copy(mc.conf_down)
+    U_upinvs = mc.Ham.U_up[oldconfup, :] \ I
+    U_downinvs = mc.Ham.U_down[oldconfdown, :] \ I
+
+    # randomly select a site
+    # flip two spins only to perform fast_update
+    i, site = getNeigh(ctx.rng, ns, nn)
+    ratio = 0
+    if mc.conf_up[i] && mc.conf_down[site]
+        mc.conf_up[i] = false # the old site is empty
+        mc.conf_up[site] = true # the new site is occupied
+        mc.conf_down[i] = true
+        mc.conf_down[site] = false
+        ratio =
+            getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site) *
+            getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
+    elseif mc.conf_up[site] && mc.conf_down[i]
+        mc.conf_up[i] = true
+        mc.conf_up[site] = false
+        mc.conf_down[i] = false
+        mc.conf_down[site] = true
+        ratio =
+            getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i) *
+            getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
+    elseif mc.conf_up[i] && !mc.conf_up[site]
+        # i is occupied, site is not for the up spin
+        mc.conf_up[i] = false
+        mc.conf_up[site] = true
+        ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site)
+    elseif !mc.conf_up[i] && mc.conf_up[site]
+        # i is empty, site is occupied for the up spin
+        mc.conf_up[i] = true
+        mc.conf_up[site] = false
+        ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i)
+    elseif mc.conf_down[i] && !mc.conf_down[site]
+        # i is occupied, site is not for the down spin
+        mc.conf_down[i] = false
+        mc.conf_down[site] = true
+        ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
+    elseif !mc.conf_down[i] && mc.conf_down[site]
+        # i is empty, site is occupied for the down spin
+        mc.conf_down[i] = true
+        mc.conf_down[site] = false
+        ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
+    end
+    if ratio < 1.0 && rand(ctx.rng) > ratio
+        mc.conf_up = oldconfup
+        mc.conf_down = oldconfdown
+    end
     return nothing
 end
 
