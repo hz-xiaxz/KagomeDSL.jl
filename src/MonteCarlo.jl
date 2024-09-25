@@ -132,7 +132,7 @@ end
         mc.conf_down[site] = false
         ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
     end
-    if ratio < 1.0 && rand(ctx.rng) > ratio
+    if ratio^2 < 1.0 && rand(ctx.rng) > ratio^2
         mc.conf_up = oldconfup
         mc.conf_down = oldconfdown
     end
