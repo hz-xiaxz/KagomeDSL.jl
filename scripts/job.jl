@@ -9,10 +9,10 @@ tm = TaskMaker()
 tm.thermalization = 2000
 tm.sweeps = 100000
 tm.binsize = 100
-tm.n1 = 4
-tm.n2 = 2
+tm.n1 = 8
+tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
-tm.PBC = (false, false)
+tm.PBC = (true, false)
 
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
@@ -22,6 +22,7 @@ shell_pool = []
 # iteratively find degenerate spaces
 start_shell = 1
 while start_shell < length(E)
+    global start_shell
     num = findlast(x -> isapprox(x, E[start_shell], atol = 1e-10), E)
     push!(shell_pool, (start_shell, num))
     start_shell = num + 1
@@ -35,7 +36,7 @@ for i = first_num:(ns÷2)
         x -> (x[1] <= i && x[2] > i) || (x[1] <= (ns - i) && x[2] > (ns - i)),
         shell_pool,
     )
-    if emtpy(shell)
+    if isempty(shell)
         task(tm; N_up = i, N_down = ns - i)
     end
 end
@@ -43,12 +44,12 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)"
+savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)PBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
     tasks = make_tasks(tm),
-    checkpoint_time = "5:00",
+    checkpoint_time = "30:00",
     run_time = "24:00:00",
 )
 
