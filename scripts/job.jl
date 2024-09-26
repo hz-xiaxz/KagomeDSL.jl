@@ -15,7 +15,6 @@ tm.n1 = 8
 tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, false)
-tm.χ = 1.0
 
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)

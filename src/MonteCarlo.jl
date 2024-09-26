@@ -16,8 +16,7 @@ function MC(params::AbstractDict)
     lat = DoubleKagome(1.0, n1, n2, PBC)
     N_up = params[:N_up]
     N_down = params[:N_down]
-    χ = params[:χ]
-    Ham = Hamiltonian(χ, N_up, N_down, lat)
+    Ham = Hamiltonian(N_up, N_down, lat)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     init_conf = zeros(Bool, ns)

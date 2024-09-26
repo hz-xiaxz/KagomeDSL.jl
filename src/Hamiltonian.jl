@@ -117,14 +117,17 @@ function Hmat(lat::DoubleKagome)
 end
 
 # temporarily separate the N_up and N_down subspaces
-function orbitals(H_mat::Matrix{Float64})
+function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
     # get sampling ensemble U_up and U_down
     vals, vecs = eigen(H_mat)
-    return vecs
+    # select N lowest eigenvectors as the sampling ensemble
+    sorted_indices = sortperm(vals)
+    U_up = vecs[:, sorted_indices[1:N_up]]
+    U_down = vecs[:, sorted_indices[1:N_down]]
+    return U_up, U_down
 end
 
 struct Hamiltonian
-    χ::Float64
     N_up::Int
     N_down::Int
     U_up::Matrix{Float64}
@@ -133,11 +136,11 @@ struct Hamiltonian
     nn::AbstractArray
 end
 
-function Hamiltonian(χ::Float64, N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
-    H_mat = Hmat(lat, χ)
+function Hamiltonian(N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
+    H_mat = Hmat(lat)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = lat.nn
-    return Hamiltonian(χ, N_up, N_down, U_up, U_down, H_mat, nn)
+    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
 end
 
 
@@ -285,8 +288,6 @@ Fast computing technique from Becca and Sorella 2017
         return 1.0
     end
     l = sum(oldconf[1:Rl]) # l-th electron
-    @show oldconf
-    @show newconf
     ratio = sum(U[k, :] .* Uinvs[:, l])
     return ratio
 end
@@ -301,20 +302,30 @@ The Hamiltonian should be the real one!
     L = length(conf_up)
     # if double occupied state, no possibility to have a non-zero overlap
     @inbounds for i = 1:L
-        if conf[i] == 1 && conf[i+L] == 1
+        if conf_up[i] == 1 && conf_down[i] == 1
             return 0.0
         end
     end
-    conf = LongBitStr(vcat(conf_up, conf_down))
     OL = 0.0
-    U_invs = Ham.U[conf, :] \ I # do invs more efficiently
+    U_upinvs = Ham.U_up[conf_up, :] \ I # do invs more efficiently
+    U_downinvs = Ham.U_down[conf_down, :] \ I
+    conf = LongBitStr(vcat(conf_up, conf_down))
     xprime = getxprime(Ham, conf)
-    old_conf = LongBitStr(conf)
+    conf_downstr = LongBitStr(conf_down)
+    conf_upstr = LongBitStr(conf_up)
     @inbounds for (confstr, coff) in pairs(xprime)
         if Gutzwiller(confstr) == 0.0
             continue
         else
-            OL += coff * fast_update(Ham.U, U_invs, confstr, conf)
+            OL +=
+                coff *
+                fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr) *
+                fast_update(
+                    Ham.U_down,
+                    U_downinvs,
+                    SubDitStr(confstr, L + 1, 2L),
+                    conf_downstr,
+                )
         end
     end
     return OL

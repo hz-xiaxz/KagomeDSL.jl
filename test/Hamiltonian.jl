@@ -35,17 +35,20 @@ end
     χ = 1.0
     N_up = 18
     N_down = 18
-    Han = KagomeDSL.Hamiltonian(DK2)
-    U = Han.U
+    Han = KagomeDSL.Hamiltonian(N_up, N_down, DK2)
+    U_up = Han.U_up
+    U_down = Han.U_down
     num = ns(DK2)
-    # check U_up is Unitary
-    @test size(U) == (num, num)
+    @test size(U_up) == (num, N_up)
+    @test size(U_down) == (num, N_down)
 end
 
 @testset "getxprime" begin
     # TODO More careful tests here
     DK = DoubleKagome(1.0, 4, 3, (false, false))
-    ham = KagomeDSL.Hamiltonian(DK)
+    N_up = 1
+    N_down = 0
+    ham = KagomeDSL.Hamiltonian(N_up, N_down, DK)
     x = LongBitStr(vcat(fill(1, 1), fill(0, 71)))
     xprime = KagomeDSL.getxprime(ham, x)
     @test length(keys(xprime)) == 1
@@ -62,7 +65,7 @@ end
 
 @testset "getOL" begin
     DK = DoubleKagome(1.0, 2, 2, (false, false))
-    ham = KagomeDSL.Hamiltonian(1.0, 6, 6, DK)
+    ham = KagomeDSL.Hamiltonian(6, 6, DK)
     # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [1,0,1,1,1,1,1,0,0,0,0,0]
     up = BitVector(vcat([1], [0], fill(1, 5), fill(0, 5)))
     @test KagomeDSL.getOL(ham, up, up) == 0.0
