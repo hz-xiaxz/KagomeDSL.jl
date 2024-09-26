@@ -86,46 +86,59 @@ end
     # flip two spins only to perform fast_update
     i, site = getNeigh(ctx.rng, ns, nn)
     ratio = 0
-    if mc.conf_up[i] && mc.conf_down[site]
-        mc.conf_up[i] = false # the old site is empty
-        mc.conf_up[site] = true # the new site is occupied
-        mc.conf_down[i] = true
-        mc.conf_down[site] = false
-        ratio =
-            getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site) *
-            getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
-    elseif mc.conf_up[site] && mc.conf_down[i]
-        mc.conf_up[i] = true
-        mc.conf_up[site] = false
-        mc.conf_down[i] = false
-        mc.conf_down[site] = true
-        ratio =
-            getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i) *
-            getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
-    elseif mc.conf_up[i] && !mc.conf_up[site]
-        # i is occupied, site is not for the up spin
-        mc.conf_up[i] = false
-        mc.conf_up[site] = true
-        ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site)
-    elseif !mc.conf_up[i] && mc.conf_up[site]
-        # i is empty, site is occupied for the up spin
-        mc.conf_up[i] = true
-        mc.conf_up[site] = false
-        ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i)
-    elseif mc.conf_down[i] && !mc.conf_down[site]
-        # i is occupied, site is not for the down spin
-        mc.conf_down[i] = false
-        mc.conf_down[site] = true
-        ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
-    elseif !mc.conf_down[i] && mc.conf_down[site]
-        # i is empty, site is occupied for the down spin
-        mc.conf_down[i] = true
-        mc.conf_down[site] = false
-        ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
+
+    update_pool = [mc.conf_up[i] && mc.conf_down[site], mc.conf_up[site] && mc.conf_down[i]]
+    maybe_update = findall(x -> x == true, update_pool)
+    if isempty(maybe_update)
+        measure!(ctx, :acc, 0.0)
+        return Nothing
+    else
+        flag = sample(ctx.rng, maybe_update)
+        if flag == 1
+            mc.conf_up[i] = false # the old site is empty
+            mc.conf_up[site] = true # the new site is occupied
+            mc.conf_down[i] = true
+            mc.conf_down[site] = false
+            ratio =
+                getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site) *
+                getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
+        elseif flag == 2
+            mc.conf_up[i] = true
+            mc.conf_up[site] = false
+            mc.conf_down[i] = false
+            mc.conf_down[site] = true
+            ratio =
+                getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i) *
+                getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
+        end
+        # elseif mc.conf_up[i] && !mc.conf_up[site]
+        #     # i is occupied, site is not for the up spin
+        #     mc.conf_up[i] = false
+        #     mc.conf_up[site] = true
+        #     ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site)
+        # elseif !mc.conf_up[i] && mc.conf_up[site]
+        #     # i is empty, site is occupied for the up spin
+        #     mc.conf_up[i] = true
+        #     mc.conf_up[site] = false
+        #     ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i)
+        # elseif mc.conf_down[i] && !mc.conf_down[site]
+        #     # i is occupied, site is not for the down spin
+        #     mc.conf_down[i] = false
+        #     mc.conf_down[site] = true
+        #     ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
+        # elseif !mc.conf_down[i] && mc.conf_down[site]
+        #     # i is empty, site is occupied for the down spin
+        #     mc.conf_down[i] = true
+        #     mc.conf_down[site] = false
+        #     ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
     end
     if ratio^2 < 1.0 && rand(ctx.rng) > ratio^2
         mc.conf_up = oldconfup
         mc.conf_down = oldconfdown
+        # measure acceptance rate here
+        measure!(ctx, :acc, 0.0)
+    else
+        measure!(ctx, :acc, 1.0)
     end
     return nothing
 end

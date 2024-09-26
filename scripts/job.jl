@@ -6,15 +6,13 @@ using Dates
 using LinearAlgebra: eigvals
 
 tm = TaskMaker()
-tm.thermalization = 5000
-tm.sweeps = 100000
+tm.thermalization = 2000
+tm.sweeps = 100000 
 tm.binsize = 100
-tm.n1 = 8
-tm.n2 = 8
-tm.n1 = 8
-tm.n2 = 8
+tm.n1 = 4 
+tm.n2 = 2
 ns = tm.n1 * tm.n2 * 3
-tm.PBC = (true, false)
+tm.PBC = (false, false)
 
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
@@ -31,7 +29,7 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "try$(tm.n1)x$(tm.n2)-2"
+savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
