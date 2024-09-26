@@ -123,16 +123,19 @@ function orbitals(H_mat::Matrix{Float64})
     return vecs
 end
 
-# what's in the Hamiltonian
 struct Hamiltonian
-    U::Matrix{Float64}
+    χ::Float64
+    N_up::Int
+    N_down::Int
+    U_up::Matrix{Float64}
+    U_down::Matrix{Float64}
     H_mat::Matrix{Float64}
     nn::AbstractArray
 end
 
-function Hamiltonian(lat::T) where {T<:AbstractLattice}
-    H_mat = Hmat(lat)
-    U = orbitals(H_mat)
+function Hamiltonian(χ::Float64, N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
+    H_mat = Hmat(lat, χ)
+    U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = lat.nn
     return Hamiltonian(χ, N_up, N_down, U_up, U_down, H_mat, nn)
 end
