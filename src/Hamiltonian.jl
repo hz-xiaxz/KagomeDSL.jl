@@ -134,13 +134,90 @@ function Hamiltonian(lat::T) where {T<:AbstractLattice}
     H_mat = Hmat(lat)
     U = orbitals(H_mat)
     nn = lat.nn
-    return Hamiltonian(U, H_mat, nn)
+    return Hamiltonian(χ, N_up, N_down, U_up, U_down, H_mat, nn)
 end
 
 
+# """
+#     Splus(i::Int, x::BitStr{N,T}) where {N,T}
+# ``S+ = f^†_{↑} f_{↓}``
+# """
+# function Splus(i::Int, x::BitStr{N,T}) where {N,T}
+#     L = length(x) ÷ 2
+#     if readbit(x, i) == 0 && readbit(x, i + L) == 1
+#         _x = x
+#         _x &= ~indicator(T, i + L)
+#         _x |= indicator(T, i)
+#         return _x, 1.0
+#     else
+#         return x, 0.0
+#     end
+# end
+
+# """
+#     Sminus(i::Int, x::BitStr{N,T}) where {N,T}
+# ``S- = f^†_{↓} f_{↑}``
+# """
+# function Sminus(i::Int, x::BitStr{N,T}) where {N,T}
+#     L = length(x) ÷ 2
+#     if readbit(x, i) == 1 && readbit(x, i + L) == 0
+#         return _x, 1.0
+#     else
+#         return x, 0.0
+#     end
+# end
+
+"""
+    Sz(i::Int, x::BitStr{N,T}) where {N,T}
+``Sz = 1/2 (f^†_{↑} f_{↑} - f^†_{↓} f_{↓})``
+"""
+function Sz(i::Int, x::BitStr{N,T}) where {N,T}
+    L = length(x) ÷ 2
+    if readbit(x, i) == 1 && readbit(x, i + L) == 0
+        return 1.0 / 2
+    elseif readbit(x, i) == 0 && readbit(x, i + L) == 1
+        return -1.0 / 2
+    else
+        return 0.0
+    end
+end
+
+function SzInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N,T}
+    xprime[x] = get!(xprime, x, 0.0) + Sz(i, x) * Sz(j, x)
+    return nothing
+end
+
+function spinInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N,T}
+    L = length(x) ÷ 2
+    # 1/2 (S+_i S-_j + S-_i S+_j)
+    # first term
+    if readbit(x, j) == 1 &&
+       readbit(x, j + L) == 0 &&
+       readbit(x, i) == 0 &&
+       readbit(x, i + L) == 1
+        _x = x
+        _x &= ~indicator(T, j)
+        _x |= indicator(T, j + L)
+        _x &= ~indicator(T, i + L)
+        _x |= indicator(T, i)
+        xprime[_x] = get!(xprime, _x, 0.0) + 1.0 / 2.0
+    elseif readbit(x, j) == 0 &&
+           readbit(x, j + L) == 1 &&
+           readbit(x, i) == 1 &&
+           readbit(x, i + L) == 0
+        _x = x
+        _x &= ~indicator(T, j + L)
+        _x |= indicator(T, j)
+        _x &= ~indicator(T, i)
+        _x |= indicator(T, i + L)
+        xprime[_x] = get!(xprime, _x, 0.0) + 1.0 / 2.0
+    end
+    return nothing
+end
+
 """
 
-return ``|x'> = H|x>``  where ``H = -t ∑_{<i,j>} χ_{ij} f_i^† f_j``
+return ``|x'> = H|x>``  where ``H`` is the Heisenberg Hamiltonian
 """
 @inline function getxprime(Ham::Hamiltonian, x::BitStr{N,T}) where {N,T}
     H_mat = Ham.H_mat
@@ -148,33 +225,16 @@ return ``|x'> = H|x>``  where ``H = -t ∑_{<i,j>} χ_{ij} f_i^† f_j``
     @assert N == 2 * size(H_mat)[1] "x should have the same 2x length as $(size(H_mat)[1]),  got: $N"
     L = length(x) ÷ 2  # Int division
     xprime = Dict{typeof(x),Float64}()
+    xprime[x] = 0.0
     # consider the spin up case
     @inbounds for i = 1:L÷2
         neigh_bond = filter(x -> x[1] == i, nn)
         for bond in neigh_bond
-            if readbit(x, i) == 1 && readbit(x, bond[2]) == 0
-                _x = x
-                _x &= ~indicator(T, i)
-                _x |= indicator(T, bond[2])
-                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond] # Hopping
-            elseif readbit(x, i) == 0 && readbit(x, bond[2]) == 1
-                _x = x
-                _x &= ~indicator(T, bond[2])
-                _x |= indicator(T, i)
-                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond[2], bond[1]] # Hopping
-            end
-
-            if readbit(x, i + L) == 1 && readbit(x, bond[2] + L) == 0
-                _x = x
-                _x &= ~indicator(T, i + L)
-                _x |= indicator(T, bond[2] + L)
-                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond] # Hopping
-            elseif readbit(x, i + L) == 0 && readbit(x, bond[2] + L) == 1
-                _x = x
-                _x &= ~indicator(T, bond[2] + L)
-                _x |= indicator(T, i + L)
-                xprime[_x] = get!(xprime, _x, 0.0) + H_mat[bond[2], bond[1]] # Hopping
-            end
+            @assert bond[2] > i "The second site should be larger than the first site, got: $(bond[2]) and $(i)"
+            spinInteraction!(xprime, x, i, bond[2])
+            spinInteraction!(xprime, x, bond[2], i)
+            SzInteraction!(xprime, x, i, bond[2])
+            SzInteraction!(xprime, x, bond[2], i)
         end
     end
     return xprime
@@ -184,10 +244,10 @@ end
     L = length(x) ÷ 2
     @inbounds for i = 1:L
         if readbit(x, i) == 1 && readbit(x, i + L) == 1
-            return 0
+            return 0.0
         end
     end
-    return 1
+    return 1.0
 end
 
 """
@@ -222,6 +282,8 @@ Fast computing technique from Becca and Sorella 2017
         return 1.0
     end
     l = sum(oldconf[1:Rl]) # l-th electron
+    @show oldconf
+    @show newconf
     ratio = sum(U[k, :] .* Uinvs[:, l])
     return ratio
 end
@@ -229,9 +291,12 @@ end
 @doc raw"""
 
 The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
+The Hamiltonian should be the real one!
 """
-@inline function getOL(Ham::Hamiltonian, conf::BitVector)
-    L = length(conf) ÷ 2
+@inline function getOL(Ham::Hamiltonian, conf_up::BitVector, conf_down::BitVector)
+    @assert length(conf_up) == length(conf_down) "The length of the up and down configurations should be the same, got: $(length(conf_up)) and $(length(conf_down))"
+    L = length(conf_up)
+    # if double occupied state, no possibility to have a non-zero overlap
     @inbounds for i = 1:L
         if conf[i] == 1 && conf[i+L] == 1
             return 0.0
@@ -243,7 +308,7 @@ The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
     xprime = getxprime(Ham, conf)
     old_conf = LongBitStr(conf)
     @inbounds for (confstr, coff) in pairs(xprime)
-        if Gutzwiller(confstr) == 0
+        if Gutzwiller(confstr) == 0.0
             continue
         else
             OL += coff * fast_update(Ham.U, U_invs, confstr, conf)
