@@ -23,11 +23,6 @@ function MC(params::AbstractDict)
     init_conf[randperm(rng, ns)[1:N_up]] .= true
     conf_up = BitVector(init_conf)
     conf_down = fill(true, ns) - conf_up
-    ns = n1 * n2 * 3
-    init_conf = zeros(Bool, ns)
-    init_conf[randperm(rng, ns)[1:N_up]] .= true
-    conf_up = BitVector(init_conf)
-    conf_down = fill(true, ns) - conf_up
     return MC(Ham, conf_up, conf_down)
 end
 
