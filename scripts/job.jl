@@ -3,6 +3,7 @@ using KagomeDSL
 using Carlo
 using Carlo.JobTools
 using Dates
+using LinearAlgebra: eigvals
 
 tm = TaskMaker()
 tm.thermalization = 5000
@@ -13,7 +14,16 @@ tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, false)
 tm.χ = 1.0
-for i = ns÷2:-1:2
+
+# pre check shell
+lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
+H = KagomeDSL.Hmat(lat, tm.χ)
+E = sort(eigvals(H))
+num = findlast(x -> isapprox(x, E[1], atol = 1e-10), E)
+# the number of N_up and N_down should be at least > num
+# if num < ns ÷ 2, i is from ns-num to num
+
+for i = (ns-num):-1:num
     task(tm; N_up = i, N_down = ns - i)
 end
 
