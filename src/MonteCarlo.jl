@@ -45,6 +45,7 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ctx.rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
+    N_up = params[:N_up]
     mc.conf_up = zeros(Bool, ns)
     mc.conf_up[randperm(ctx.rng, ns)[1:N_up]] .= true
     mc.conf_up = BitVector(mc.conf_up)

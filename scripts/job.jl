@@ -18,7 +18,7 @@ tm.PBC = (true, false)
 
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
-H = KagomeDSL.Hmat(lat, tm.χ)
+H = KagomeDSL.Hmat(lat)
 E = sort(eigvals(H))
 num = findlast(x -> isapprox(x, E[1], atol = 1e-10), E)
 # the number of N_up and N_down should be at least > num
