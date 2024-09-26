@@ -24,6 +24,11 @@ function MC(params::AbstractDict)
     init_conf[randperm(rng, ns)[1:N_up]] .= true
     conf_up = BitVector(init_conf)
     conf_down = fill(true, ns) - conf_up
+    ns = n1 * n2 * 3
+    init_conf = zeros(Bool, ns)
+    init_conf[randperm(rng, ns)[1:N_up]] .= true
+    conf_up = BitVector(init_conf)
+    conf_down = fill(true, ns) - conf_up
     return MC(Ham, conf_up, conf_down)
 end
 
@@ -35,19 +40,10 @@ Initialize the Monte Carlo object
 * `n1` : `Int` number of cells in x direction
 * `n2` : `Int` number of cells in y direction
 * `PBC` : `Tuple{Bool,2}` boundary condition, e.g. (false, false)
-* `χ` : `Float64` hopping strength
-* `N_up` : `Int` number of up spinons
-* `N_down` : `Int` number of down spinons
 """
 @inline function Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
-    PBC = params[:PBC]
-    lat = DoubleKagome(1.0, n1, n2, PBC)
-    N_up = params[:N_up]
-    N_down = params[:N_down]
-    χ = params[:χ]
-    Ham = Hamiltonian(χ, N_up, N_down, lat)
     ctx.rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     mc.conf_up = zeros(Bool, ns)
@@ -140,9 +136,9 @@ end
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
+    # get E
     OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
     measure!(ctx, :OL, OL)
-
     return nothing
 end
 

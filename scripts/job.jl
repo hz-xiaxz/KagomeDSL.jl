@@ -11,6 +11,8 @@ tm.sweeps = 100000
 tm.binsize = 100
 tm.n1 = 8
 tm.n2 = 8
+tm.n1 = 8
+tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, false)
 tm.χ = 1.0
@@ -35,7 +37,7 @@ job = JobInfo(
     savepath,
     KagomeDSL.MC;
     tasks = make_tasks(tm),
-    checkpoint_time = "30:00",
+    checkpoint_time = "5:00",
     run_time = "24:00:00",
 )
 
