@@ -144,9 +144,16 @@ end
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
-    # get E
-    OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
-    measure!(ctx, :OL, OL)
+    while true
+        OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
+        @info "OL = $OL"
+        # exclude all 0 valued states``
+        if OL != 0.0
+            measure!(ctx, :OL, OL)
+            break
+        end
+        Carlo.sweep!(mc, ctx)
+    end
     return nothing
 end
 
