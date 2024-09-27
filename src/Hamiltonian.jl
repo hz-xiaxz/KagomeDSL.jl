@@ -119,7 +119,9 @@ end
 # temporarily separate the N_up and N_down subspaces
 function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
     # get sampling ensemble U_up and U_down
-    vals, vecs = eigen(H_mat)
+    F = schur(H_mat)
+    vals = real.(diag(F.Schur))
+    vecs = F.vectors
     # select N lowest eigenvectors as the sampling ensemble
     sorted_indices = sortperm(vals)
     U_up = vecs[:, sorted_indices[1:N_up]]
@@ -224,6 +226,7 @@ end
 """
 
 return ``|x'> = H|x>``  where ``H`` is the Heisenberg Hamiltonian
+Note ``|x>`` here should also be a Mott state.
 """
 @inline function getxprime(Ham::Hamiltonian, x::BitStr{N,T}) where {N,T}
     H_mat = Ham.H_mat
