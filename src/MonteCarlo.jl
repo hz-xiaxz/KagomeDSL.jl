@@ -146,7 +146,6 @@ end
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     while true
         OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
-        @info "OL = $OL"
         # exclude all 0 valued states``
         if OL != 0.0
             measure!(ctx, :OL, OL)

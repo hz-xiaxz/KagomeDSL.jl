@@ -61,6 +61,21 @@ end
     k1 = LongBitStr(vcat([0], [1], fill(0, 34), [1], fill(0, 35)))
     @test k1 in keys(xprime1)
     @test xprime1[k1] == 1.0 / 2.0 * 2
+
+    # try to test if you would ever get double occupied |x'> here
+    # S+ will flip the sign of a site should never achieve a double occupied site
+
+    DK1 = DoubleKagome(1.0, 2, 2, (false, false))
+    num = ns(DK1)
+    ham1 = KagomeDSL.Hamiltonian(num ÷ 2, num ÷ 2, DK1)
+    # consider up: [1,0,1,1,1,1,1,0,0,0,0,0], down is the opposite
+    up = BitVector(vcat([1], [0], fill(1, 5), fill(0, 5)))
+    down = fill(true, num) - up
+    x2 = LongBitStr(vcat(up, down))
+    xprime2 = KagomeDSL.getxprime(ham1, x2)
+    for (k, v) in xprime2
+        @test KagomeDSL.Gutzwiller(k) != 0.0
+    end
 end
 
 @testset "getOL" begin
