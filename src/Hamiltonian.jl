@@ -320,15 +320,22 @@ The Hamiltonian should be the real one!
         if Gutzwiller(confstr) == 0.0
             continue
         else
-            OL +=
-                coff *
-                fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr) *
-                fast_update(
-                    Ham.U_down,
-                    U_downinvs,
-                    SubDitStr(confstr, L + 1, 2L),
-                    conf_downstr,
-                )
+            fast_update_up =
+                fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr)
+            fast_update_down = fast_update(
+                Ham.U_down,
+                U_downinvs,
+                SubDitStr(confstr, L + 1, 2L),
+                conf_downstr,
+            )
+            update_up = det(Ham.U_up[Bool.(confstr[1:L]), :]) / det(Ham.U_up[conf_up, :])
+            update_down =
+                det(Ham.U_down[Bool.(confstr[L+1:2L]), :]) / det(Ham.U_down[conf_down, :])
+            ci = coff * update_up * update_down
+            @info "update_up: $update_up, fast_update_up: $fast_update_up"
+
+            @info "update_down: $update_down, fast_update_down: $fast_update_down"
+            OL += ci
         end
     end
     return OL

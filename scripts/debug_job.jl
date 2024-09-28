@@ -1,9 +1,9 @@
-#! /usr/bin/env -S julia --startup-file=no --color=yes
 using KagomeDSL
 using Carlo
 using Carlo.JobTools
 using Dates
 using LinearAlgebra: eigvals
+using Logging
 
 tm = TaskMaker()
 tm.thermalization = 100
@@ -44,7 +44,7 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)PBC"
+savepath = dir * "/../data/" * "debug$(tm.n1)x$(tm.n2)PBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
@@ -53,4 +53,7 @@ job = JobInfo(
     run_time = "24:00:00",
 )
 
-Carlo.start(job, ARGS)
+Carlo.cli_delete(job, Dict())
+with_logger(Carlo.default_logger()) do
+    start(Carlo.SingleScheduler, job)
+end
