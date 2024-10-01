@@ -332,9 +332,14 @@ The Hamiltonian should be the real one!
             update_down =
                 det(Ham.U_down[Bool.(confstr[L+1:2L]), :]) / det(Ham.U_down[conf_down, :])
             ci = coff * update_up * update_down
-            @info "update_up: $update_up, fast_update_up: $fast_update_up"
+            if !isapprox(fast_update_up, update_up, atol = 1e-10)
 
-            @info "update_down: $update_down, fast_update_down: $fast_update_down"
+                if !isapprox(Ham.U_up[conf_up, :] * U_upinvs, I)
+
+                @info "update_up: $update_up, fast_update_up: $fast_update_up"
+                @info isapprox(Ham.U_up[conf_up, :] * U_upinvs, I)
+                end
+            end
             OL += ci
         end
     end

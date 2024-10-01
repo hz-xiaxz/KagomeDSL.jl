@@ -1,3 +1,4 @@
+#! /usr/bin/env -S julia --startup-file=no --color=yes
 using KagomeDSL
 using Carlo
 using Carlo.JobTools
