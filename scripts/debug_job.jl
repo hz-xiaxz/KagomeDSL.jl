@@ -6,9 +6,9 @@ using LinearAlgebra: eigvals
 using Logging
 
 tm = TaskMaker()
-tm.thermalization = 100
-tm.sweeps = 10
-tm.binsize = 1
+tm.thermalization = 2000
+tm.sweeps = 20000
+tm.binsize = 10
 tm.n1 = 8
 tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
@@ -44,16 +44,13 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "debug$(tm.n1)x$(tm.n2)PBC"
+savepath = dir * "/../data/" * "nofast$(tm.n1)x$(tm.n2)PBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
     tasks = make_tasks(tm),
     checkpoint_time = "30:00",
-    run_time = "24:00:00",
+    run_time = "72:00:00",
 )
 
-Carlo.cli_delete(job, Dict())
-with_logger(Carlo.default_logger()) do
-    start(Carlo.SingleScheduler, job)
-end
+Carlo.start(job, ARGS)
