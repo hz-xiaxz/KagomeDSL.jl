@@ -5,6 +5,7 @@ using StatsBase
 using Random
 using Carlo
 using HDF5
+using ArnoldiMethod
 
 export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice, ns
 include("Lattice.jl")
