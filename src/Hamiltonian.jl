@@ -118,14 +118,13 @@ end
 
 # temporarily separate the N_up and N_down subspaces
 function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
+    search_num = max(N_up, N_down)
     # get sampling ensemble U_up and U_down
-    F = schur(H_mat)
-    vals = real.(diag(F.Schur))
-    vecs = F.vectors
+    decomp, history =
+        ArnoldiMethod.partialschur(H_mat, nev = search_num, tol = 1e-14, which = :SR)
     # select N lowest eigenvectors as the sampling ensemble
-    sorted_indices = sortperm(vals)
-    U_up = vecs[:, sorted_indices[1:N_up]]
-    U_down = vecs[:, sorted_indices[1:N_down]]
+    U_up = decomp.Q[:, 1:N_up]
+    U_down = decomp.Q[:, 1:N_down]
     return U_up, U_down
 end
 
@@ -320,6 +319,9 @@ The Hamiltonian should be the real one!
         if Gutzwiller(confstr) == 0.0
             continue
         else
+            update_up = det(Ham.U_up[Bool.(confstr[1:L]), :]) / det(Ham.U_up[conf_up, :])
+            update_down =
+                det(Ham.U_down[Bool.(confstr[L+1:2L]), :]) / det(Ham.U_down[conf_down, :])
             fast_update_up =
                 fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr)
             fast_update_down = fast_update(
@@ -328,11 +330,7 @@ The Hamiltonian should be the real one!
                 SubDitStr(confstr, L + 1, 2L),
                 conf_downstr,
             )
-            update_up = det(Ham.U_up[Bool.(confstr[1:L]), :]) / det(Ham.U_up[conf_up, :])
-            update_down =
-                det(Ham.U_down[Bool.(confstr[L+1:2L]), :]) / det(Ham.U_down[conf_down, :])
-            ci = coff * update_up * update_down
-            OL += ci
+            OL += coff * update_up * update_down
         end
     end
     return OL
