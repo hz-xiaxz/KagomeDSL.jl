@@ -3,7 +3,8 @@ using KagomeDSL
 using Carlo
 using Carlo.JobTools
 using Dates
-using LinearAlgebra: eigvals
+using LinearAlgebra
+using ArnoldiMethod
 using Logging
 
 tm = TaskMaker()
@@ -18,8 +19,9 @@ tm.PBC = (true, false)
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
 H = KagomeDSL.Hmat(lat)
-E = sort(eigvals(H))
+decomp, history = ArnoldiMethod.partialschur(H, nev =ns, tol=1e-10, which=:SR)
 shell_pool = []
+E = diag(decomp.R)
 # iteratively find degenerate spaces
 start_shell = 1
 while start_shell < length(E)
