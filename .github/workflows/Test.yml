@@ -22,12 +22,12 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          -  '~1.11.0-0'
+          - "lts"
+          - "1"
         os:
           - ubuntu-latest
-          #- macOS-latest
-          #- windows-latest
+          - macOS-latest
+          - windows-latest
         arch:
           - x64
         allow_failure: [false]
-
