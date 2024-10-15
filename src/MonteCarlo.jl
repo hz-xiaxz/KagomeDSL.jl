@@ -17,7 +17,6 @@ function MC(params::AbstractDict)
     N_up = params[:N_up]
     N_down = params[:N_down]
     Ham = Hamiltonian(N_up, N_down, lat)
-    rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     init_conf = zeros(Bool, ns)
     init_conf[randperm(rng, ns)[1:N_up]] .= true
@@ -38,7 +37,6 @@ Initialize the Monte Carlo object
 @inline function Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
-    ctx.rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     N_up = params[:N_up]
     N_down = params[:N_down]
