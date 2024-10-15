@@ -46,6 +46,12 @@ function MC(params::AbstractDict)
     return MC(Ham, conf_up, conf_down, W_up, W_down)
 end
 
+"""
+    update_W(W::AbstractMatrix, l::Int, K::Int)
+------------
+Update the W matrix
+``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
+"""
 function update_W(W::AbstractMatrix, l::Int, K::Int)
     new_W = similar(W)
     @inbounds for I in axes(W)[1]
