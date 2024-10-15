@@ -47,12 +47,12 @@ function MC(params::AbstractDict)
 end
 
 """
-    update_W(W::AbstractMatrix, l::Int, K::Int)
+    update_W(W::AbstractMatrix; l::Int, K::Int)
 ------------
 Update the W matrix
 ``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
 """
-function update_W(W::AbstractMatrix, l::Int, K::Int)
+function update_W(W::AbstractMatrix; l::Int, K::Int)
     new_W = similar(W)
     @inbounds for I in axes(W)[1]
         for j in axes(W)[2]
@@ -99,6 +99,18 @@ Initialize the Monte Carlo object
         end
     end
 end
+
+function getRatio(
+    U::AbstractMatrix,
+    Uinvs::AbstractMatrix,
+    oldconf::BitVector;
+    old::Int,
+    new::Int,
+)
+    l = sum(oldconf[1:old])
+    return sum(U[new, :] .* Uinvs[:, l])
+end
+
 
 function getNeigh(rng, ns::Int, nn::AbstractArray)
     while true
@@ -177,15 +189,15 @@ end
         measure!(ctx, :acc, 0.0)
     else
         if flag == 1
-            mc.W_up = update_W(mc.W_up, l_up, site)
-            mc.W_down = update_W(mc.W_down, l_down, i)
+            mc.W_up = update_W(mc.W_up; l = l_up, K = site)
+            mc.W_down = update_W(mc.W_down; l = l_down, K = i)
             mc.conf_up[i] = false
             mc.conf_up[site] = true
             mc.conf_down[i] = true
             mc.conf_down[site] = false
         elseif flag == 2
-            mc.W_up = update_W(mc.W_up, l_up, i)
-            mc.W_down = update_W(mc.W_down, l_down, site)
+            mc.W_up = update_W(mc.W_up; l = l_up, K = i)
+            mc.W_down = update_W(mc.W_down; l = l_down, K = site)
             mc.conf_up[i] = true
             mc.conf_up[site] = false
             mc.conf_down[i] = false
