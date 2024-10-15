@@ -108,7 +108,8 @@ function getRatio(
     new::Int,
 )
     l = sum(oldconf[1:old])
-    return sum(U[new, :] .* Uinvs[:, l])
+    new_prime = sum(oldconf[1:new])
+    return dot(U[new, :], Uinvs[:, l]) * (-1)^(new_prime - l)
 end
 
 
@@ -166,9 +167,14 @@ end
                 det(mc.Ham.U_up[Bool.(new_conf), :]) / det(mc.Ham.U_up[oldconfup, :])
             if !isapprox(ratio_W_up, ratio_true_up; atol = 1e-14)
                 @show ratio_W_up, ratio_true_up
+                @show l_up
+                @show "new=$site, old=$i"
             end
             if !isapprox(ratio_get_up, ratio_true_up; atol = 1e-14)
-                @show ratio_get_up, ratio_true_up
+                @info ratio_get_up, ratio_true_up
+                @show mc.Ham.U_up[site, :] .* U_upinvs[:, l_up]
+                @show mc.Ham.U_up[site, :]
+                @show U_upinvs[:, l_up]
             end
         elseif flag == 2
             # @assert mc.conf_up[site] && mc.conf_down[i]
