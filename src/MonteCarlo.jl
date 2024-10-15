@@ -2,6 +2,8 @@ mutable struct MC <: AbstractMC
     Ham::Hamiltonian
     conf_up::BitVector
     conf_down::BitVector
+    W_up::AbstractMatrix
+    W_down::AbstractMatrix
 end
 
 """
@@ -23,7 +25,35 @@ function MC(params::AbstractDict)
     init_conf[randperm(rng, ns)[1:N_up]] .= true
     conf_up = BitVector(init_conf)
     conf_down = fill(true, ns) - conf_up
-    return MC(Ham, conf_up, conf_down)
+    U_upinvs = Ham.U_up[Bool.(conf_up), :] \ I
+    U_downinvs = Ham.U_down[Bool.(conf_down), :] \ I
+    # calculate W_up and W_down
+    W_up = zeros(Float64, ns, N_up) # W_up is a ns x N_up matrix
+    W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
+    @inbounds for i = 1:ns
+        for j = 1:N_up
+            W_up[i, j] = sum(Ham.U_up[i, :] .* U_upinvs[:, j])
+            # it is not weird that some elements are zero
+            # that's because i is occupied for now
+        end
+    end
+
+    @inbounds for i = 1:ns
+        for j = 1:N_up
+            W_down[i, j] = sum(Ham.U_down[i, :] .* U_downinvs[:, j])
+        end
+    end
+    return MC(Ham, conf_up, conf_down, W_up, W_down)
+end
+
+function update_W(W::AbstractMatrix, l::Int, K::Int)
+    new_W = similar(W)
+    @inbounds for I in axes(W)[1]
+        for j in axes(W)[2]
+            new_W[I, j] = W[I, j] - W[I, l] / W[K, l] * (W[K, j] - ((l == j) ? 1 : 0))
+        end
+    end
+    return new_W
 end
 
 """
@@ -41,10 +71,27 @@ Initialize the Monte Carlo object
     ctx.rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     N_up = params[:N_up]
+    N_down = params[:N_down]
     mc.conf_up = zeros(Bool, ns)
     mc.conf_up[randperm(ctx.rng, ns)[1:N_up]] .= true
     mc.conf_up = BitVector(mc.conf_up)
     mc.conf_down = fill(true, ns) - mc.conf_up
+    U_upinvs = mc.Ham.U_up[Bool.(mc.conf_up), :] \ I
+    U_downinvs = mc.Ham.U_down[Bool.(mc.conf_down), :] \ I
+    # calculate W_up and W_down
+    W_up = zeros(Float64, ns, N_up) # W_up is a ns x N_up matrix
+    W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
+    @inbounds for i = 1:ns
+        for j = 1:N_up
+            W_up[i, j] = sum(mc.Ham.U_up[i, :] .* U_upinvs[:, j])
+        end
+    end
+
+    @inbounds for i = 1:ns
+        for j = 1:N_up
+            W_down[i, j] = sum(mc.Ham.U_down[i, :] .* U_downinvs[:, j])
+        end
+    end
 end
 
 function getNeigh(rng, ns::Int, nn::AbstractArray)
@@ -60,27 +107,14 @@ function getNeigh(rng, ns::Int, nn::AbstractArray)
     end
 end
 
-function getRatio(
-    U::AbstractMatrix,
-    Uinvs::AbstractMatrix,
-    oldconf::BitVector,
-    i::Int,
-    site::Int,
-)
-    l = sum(oldconf[1:i])
-    return sum(U[site, :] .* Uinvs[:, l])
-end
-
 @inline function Carlo.sweep!(mc::MC, ctx::MCContext)
     # should perform MCMC here
     # MCMC scheme, generate a Mott state
     # the electrons are only allowed to swap between different spins and from an occupied site to an unoccupied site
     nn = mc.Ham.nn
     ns = length(mc.conf_up)
-    oldconfup = copy(mc.conf_up)
-    oldconfdown = copy(mc.conf_down)
-    U_upinvs = mc.Ham.U_up[oldconfup, :] \ I
-    U_downinvs = mc.Ham.U_down[oldconfdown, :] \ I
+    # U_upinvs = mc.Ham.U_up[oldconfup, :] \ I
+    # U_downinvs = mc.Ham.U_down[oldconfdown, :] \ I
 
     # randomly select a site
     # flip two spins only to perform fast_update
@@ -95,21 +129,21 @@ end
     else
         flag = sample(ctx.rng, maybe_update)
         if flag == 1
-            mc.conf_up[i] = false # the old site is empty
-            mc.conf_up[site] = true # the new site is occupied
-            mc.conf_down[i] = true
-            mc.conf_down[site] = false
-            ratio =
-                getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site) *
-                getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
+            # mc.conf_up[i] = false # the old site is empty
+            # mc.conf_up[site] = true # the new site is occupied
+            # mc.conf_down[i] = true
+            # mc.conf_down[site] = false
+            l_up = sum(mc.conf_up[1:i])
+            l_down = sum(mc.conf_down[1:site])
+            ratio = mc.W_up[site, l_up] * mc.W_down[i, l_down]
         elseif flag == 2
-            mc.conf_up[i] = true
-            mc.conf_up[site] = false
-            mc.conf_down[i] = false
-            mc.conf_down[site] = true
-            ratio =
-                getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i) *
-                getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
+            l_up = sum(mc.conf_up[1:site])
+            l_down = sum(mc.conf_down[1:i])
+            # mc.conf_up[i] = true
+            # mc.conf_up[site] = false
+            # mc.conf_down[i] = false
+            # mc.conf_down[site] = true
+            ratio = mc.W_up[i, l_up] * mc.W_down[site, l_down]
         end
         # elseif mc.conf_up[i] && !mc.conf_up[site]
         #     # i is occupied, site is not for the up spin
@@ -133,29 +167,36 @@ end
         #     ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
     end
     if ratio^2 < 1.0 && rand(ctx.rng) > ratio^2
-        mc.conf_up = oldconfup
-        mc.conf_down = oldconfdown
         # measure acceptance rate here
         measure!(ctx, :acc, 0.0)
     else
+        if flag == 1
+            mc.W_up = update_W(mc.W_up, l_up, site)
+            mc.W_down = update_W(mc.W_down, l_down, i)
+            mc.conf_up[i] = false
+            mc.conf_up[site] = true
+            mc.conf_down[i] = true
+            mc.conf_down[site] = false
+        elseif flag == 2
+            mc.W_up = update_W(mc.W_up, l_up, i)
+            mc.W_down = update_W(mc.W_down, l_down, site)
+            mc.conf_up[i] = true
+            mc.conf_up[site] = false
+            mc.conf_down[i] = false
+            mc.conf_down[site] = true
+        end
         measure!(ctx, :acc, 1.0)
     end
+    # TODO: when sweep Ne time steps, re-evaluate the W matrices
     return nothing
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
-    while true
-        OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
-        # exclude all 0 valued states``
-        if OL != 0.0
-            measure!(ctx, :OL, OL)
-            break
-        end
-        Carlo.sweep!(mc, ctx)
-    end
+    # get E
+    OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
+    measure!(ctx, :OL, OL)
     return nothing
 end
-
 @inline function Carlo.register_evaluables(
     ::Type{MC},
     eval::Evaluator,
