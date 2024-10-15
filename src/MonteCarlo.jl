@@ -195,8 +195,6 @@ end
     # get E
     OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
     measure!(ctx, :OL, OL)
-    measure!(ctx, :W_up, mc.W_up)
-    measure!(ctx, :W_down, mc.W_down)
     return nothing
 end
 
