@@ -56,7 +56,7 @@ function update_W(W::AbstractMatrix; l::Int, K::Int)
     new_W = similar(W)
     @inbounds for I in axes(W)[1]
         for j in axes(W)[2]
-            new_W[I, j] = W[I, j] - W[I, l] / W[K, l] * (W[K, j] - ((l == j) ? 1 : 0))
+            new_W[I, j] = W[I, j] - W[I, l] / W[K, l] * (W[K, j] - ((l == j) ? 1.0 : 0.0))
         end
     end
     return new_W
@@ -131,8 +131,10 @@ end
     # the electrons are only allowed to swap between different spins and from an occupied site to an unoccupied site
     nn = mc.Ham.nn
     ns = length(mc.conf_up)
-    # U_upinvs = mc.Ham.U_up[oldconfup, :] \ I
-    # U_downinvs = mc.Ham.U_down[oldconfdown, :] \ I
+    oldconfup = copy(Bool.(mc.conf_up))
+    oldconfdown = copy(Bool.(mc.conf_down))
+    U_upinvs = mc.Ham.U_up[oldconfup, :] \ I
+    U_downinvs = mc.Ham.U_down[oldconfdown, :] \ I
 
     # randomly select a site
     # flip two spins only to perform fast_update
@@ -151,10 +153,25 @@ end
             # mc.conf_up[site] = true # the new site is occupied
             # mc.conf_down[i] = true
             # mc.conf_down[site] = false
+            # @assert mc.conf_up[i] && mc.conf_down[site]
             l_up = sum(mc.conf_up[1:i])
             l_down = sum(mc.conf_down[1:site])
             ratio = mc.W_up[site, l_up] * mc.W_down[i, l_down]
+            ratio_W_up = mc.W_up[site, l_up]
+            ratio_get_up = getRatio(mc.Ham.U_up, U_upinvs, oldconfup; old = i, new = site)
+            new_conf = copy(Bool.(mc.conf_up))
+            new_conf[i] = false
+            new_conf[site] = true
+            ratio_true_up =
+                det(mc.Ham.U_up[Bool.(new_conf), :]) / det(mc.Ham.U_up[oldconfup, :])
+            if !isapprox(ratio_W_up, ratio_true_up; atol = 1e-14)
+                @show ratio_W_up, ratio_true_up
+            end
+            if !isapprox(ratio_get_up, ratio_true_up; atol = 1e-14)
+                @show ratio_get_up, ratio_true_up
+            end
         elseif flag == 2
+            # @assert mc.conf_up[site] && mc.conf_down[i]
             l_up = sum(mc.conf_up[1:site])
             l_down = sum(mc.conf_down[1:i])
             # mc.conf_up[i] = true
