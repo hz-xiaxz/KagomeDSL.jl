@@ -2,8 +2,6 @@ mutable struct MC <: AbstractMC
     Ham::Hamiltonian
     conf_up::BitVector
     conf_down::BitVector
-    W_up::AbstractMatrix
-    W_down::AbstractMatrix
 end
 
 """
@@ -25,41 +23,7 @@ function MC(params::AbstractDict)
     init_conf[randperm(rng, ns)[1:N_up]] .= true
     conf_up = BitVector(init_conf)
     conf_down = fill(true, ns) - conf_up
-    U_upinvs = Ham.U_up[Bool.(conf_up), :] \ I
-    U_downinvs = Ham.U_down[Bool.(conf_down), :] \ I
-    # calculate W_up and W_down
-    W_up = zeros(Float64, ns, N_up) # W_up is a ns x N_up matrix
-    W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_up[i, j] = sum(Ham.U_up[i, :] .* U_upinvs[:, j])
-            # it is not weird that some elements are zero
-            # that's because i is occupied for now
-        end
-    end
-
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_down[i, j] = sum(Ham.U_down[i, :] .* U_downinvs[:, j])
-        end
-    end
-    return MC(Ham, conf_up, conf_down, W_up, W_down)
-end
-
-"""
-    update_W(W::AbstractMatrix; l::Int, K::Int)
-------------
-Update the W matrix
-``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
-"""
-function update_W(W::AbstractMatrix; l::Int, K::Int)
-    new_W = similar(W)
-    @inbounds for I in axes(W)[1]
-        for j in axes(W)[2]
-            new_W[I, j] = W[I, j] - W[I, l] / W[K, l] * (W[K, j] - ((l == j) ? 1.0 : 0.0))
-        end
-    end
-    return new_W
+    return MC(Ham, conf_up, conf_down)
 end
 
 """
@@ -82,22 +46,6 @@ Initialize the Monte Carlo object
     mc.conf_up[randperm(ctx.rng, ns)[1:N_up]] .= true
     mc.conf_up = BitVector(mc.conf_up)
     mc.conf_down = fill(true, ns) - mc.conf_up
-    U_upinvs = mc.Ham.U_up[Bool.(mc.conf_up), :] \ I
-    U_downinvs = mc.Ham.U_down[Bool.(mc.conf_down), :] \ I
-    # calculate W_up and W_down
-    W_up = zeros(Float64, ns, N_up) # W_up is a ns x N_up matrix
-    W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_up[i, j] = sum(mc.Ham.U_up[i, :] .* U_upinvs[:, j])
-        end
-    end
-
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_down[i, j] = sum(mc.Ham.U_down[i, :] .* U_downinvs[:, j])
-        end
-    end
 end
 
 function getRatio(
@@ -157,25 +105,21 @@ end
             # @assert mc.conf_up[i] && mc.conf_down[site]
             l_up = sum(mc.conf_up[1:i])
             l_down = sum(mc.conf_down[1:site])
-            ratio = mc.W_up[site, l_up] * mc.W_down[i, l_down]
-            ratio_W_up = mc.W_up[site, l_up]
             ratio_get_up = getRatio(mc.Ham.U_up, U_upinvs, oldconfup; old = i, new = site)
             new_conf = copy(Bool.(mc.conf_up))
             new_conf[i] = false
             new_conf[site] = true
             ratio_true_up =
                 det(mc.Ham.U_up[Bool.(new_conf), :]) / det(mc.Ham.U_up[oldconfup, :])
-            if !isapprox(ratio_W_up, ratio_true_up; atol = 1e-14)
-                @show ratio_W_up, ratio_true_up
-                @show l_up
-                @show "new=$site, old=$i"
-            end
             if !isapprox(ratio_get_up, ratio_true_up; atol = 1e-14)
                 @info ratio_get_up, ratio_true_up
                 @show mc.Ham.U_up[site, :] .* U_upinvs[:, l_up]
                 @show mc.Ham.U_up[site, :]
                 @show U_upinvs[:, l_up]
             end
+            ratio =
+                getRatio(mc.Ham.U_down, U_downinvs, oldconfdown; old = site, new = i) *
+                getRatio(mc.Ham.U_up, U_upinvs, oldconfup; old = i, new = site)
         elseif flag == 2
             # @assert mc.conf_up[site] && mc.conf_down[i]
             l_up = sum(mc.conf_up[1:site])
@@ -184,7 +128,9 @@ end
             # mc.conf_up[site] = false
             # mc.conf_down[i] = false
             # mc.conf_down[site] = true
-            ratio = mc.W_up[i, l_up] * mc.W_down[site, l_down]
+            ratio =
+                getRatio(mc.Ham.U_down, U_downinvs, oldconfdown; old = i, new = site) *
+                getRatio(mc.Ham.U_up, U_upinvs, oldconfup, old = site, new = i)
         end
         # elseif mc.conf_up[i] && !mc.conf_up[site]
         #     # i is occupied, site is not for the up spin
@@ -212,15 +158,11 @@ end
         measure!(ctx, :acc, 0.0)
     else
         if flag == 1
-            mc.W_up = update_W(mc.W_up; l = l_up, K = site)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = i)
             mc.conf_up[i] = false
             mc.conf_up[site] = true
             mc.conf_down[i] = true
             mc.conf_down[site] = false
         elseif flag == 2
-            mc.W_up = update_W(mc.W_up; l = l_up, K = i)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = site)
             mc.conf_up[i] = true
             mc.conf_up[site] = false
             mc.conf_down[i] = false
@@ -228,7 +170,6 @@ end
         end
         measure!(ctx, :acc, 1.0)
     end
-    # TODO: when sweep Ne time steps, re-evaluate the W matrices
     return nothing
 end
 
@@ -238,6 +179,7 @@ end
     measure!(ctx, :OL, OL)
     return nothing
 end
+
 @inline function Carlo.register_evaluables(
     ::Type{MC},
     eval::Evaluator,
