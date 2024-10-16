@@ -18,6 +18,7 @@ function MC(params::AbstractDict)
     N_down = params[:N_down]
     Ham = Hamiltonian(N_up, N_down, lat)
     ns = n1 * n2 * 3
+    rng = Random.Xoshiro(42)
     init_conf = zeros(Bool, ns)
     init_conf[randperm(rng, ns)[1:N_up]] .= true
     conf_up = BitVector(init_conf)
