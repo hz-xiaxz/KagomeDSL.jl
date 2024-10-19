@@ -38,7 +38,6 @@ Initialize the Monte Carlo object
 @inline function Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
-    ctx.rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     N_up = params[:N_up]
     mc.conf_up = zeros(Bool, ns)

@@ -3,11 +3,12 @@ using KagomeDSL
 using Carlo
 using Carlo.JobTools
 using Dates
-using LinearAlgebra: eigvals
+using LinearAlgebra
+using ArnoldiMethod
 
 tm = TaskMaker()
-tm.thermalization = 2000
-tm.sweeps = 100000
+tm.thermalization = 5000
+tm.sweeps = 200000
 tm.binsize = 100
 tm.n1 = 8
 tm.n2 = 8
@@ -17,7 +18,8 @@ tm.PBC = (true, false)
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
 H = KagomeDSL.Hmat(lat)
-E = sort(eigvals(H))
+decomp, history = ArnoldiMethod.partialschur(H, nev = ns, tol = 1e-10, which = :SR)
+E = diag(decomp.R)
 shell_pool = []
 # iteratively find degenerate spaces
 start_shell = 1
@@ -44,7 +46,7 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)PBC"
+savepath = dir * "/../data/" * "nofast$(tm.n1)x$(tm.n2)PBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;

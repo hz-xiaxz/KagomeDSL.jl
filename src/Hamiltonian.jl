@@ -321,14 +321,6 @@ The Hamiltonian should be the real one!
             update_up = det(Ham.U_up[Bool.(confstr[1:L]), :]) / det(Ham.U_up[conf_up, :])
             update_down =
                 det(Ham.U_down[Bool.(confstr[L+1:2L]), :]) / det(Ham.U_down[conf_down, :])
-            fast_update_up =
-                fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr)
-            fast_update_down = fast_update(
-                Ham.U_down,
-                U_downinvs,
-                SubDitStr(confstr, L + 1, 2L),
-                conf_downstr,
-            )
             OL += coff * update_up * update_down
         end
     end
