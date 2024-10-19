@@ -6,6 +6,18 @@ mutable struct MC <: AbstractMC
     W_down::AbstractMatrix
 end
 
+function reevaluateW!(mc::MC)
+    # Calculate inverse matrices
+    U_up_inv = mc.Ham.U_up[Bool.(mc.conf_up), :] \ I
+    U_down_inv = mc.Ham.U_down[Bool.(mc.conf_down), :] \ I
+
+    # Calculate W matrices using matrix multiplication
+    mc.W_up = mc.Ham.U_up * U_up_inv
+    mc.W_down = mc.Ham.U_down * U_down_inv
+
+    return nothing
+end
+
 """
     MC(params::AbstractDict)
 ------------
@@ -28,21 +40,9 @@ function MC(params::AbstractDict)
     U_upinvs = Ham.U_up[Bool.(conf_up), :] \ I
     U_downinvs = Ham.U_down[Bool.(conf_down), :] \ I
     # calculate W_up and W_down
-    W_up = zeros(Float64, ns, N_up) # W_up is a ns x N_up matrix
-    W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_up[i, j] = dot(Ham.U_up[i, :], U_upinvs[:, j])
-            # it is not weird that some elements are zero
-            # that's because i is occupied for now
-        end
-    end
-
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_down[i, j] = dot(Ham.U_down[i, :], U_downinvs[:, j])
-        end
-    end
+    # Calculate W matrices using matrix multiplication
+    W_up = Ham.U_up * U_upinvs
+    W_down = Ham.U_down * U_downinvs
     return MC(Ham, conf_up, conf_down, W_up, W_down)
 end
 
@@ -78,27 +78,12 @@ Initialize the Monte Carlo object
     ctx.rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    N_down = params[:N_down]
     mc.conf_up = zeros(Bool, ns)
     mc.conf_up[randperm(ctx.rng, ns)[1:N_up]] .= true
     mc.conf_up = BitVector(mc.conf_up)
     mc.conf_down = fill(true, ns) - mc.conf_up
-    U_upinvs = mc.Ham.U_up[Bool.(mc.conf_up), :] \ I
-    U_downinvs = mc.Ham.U_down[Bool.(mc.conf_down), :] \ I
     # calculate W_up and W_down
-    W_up = zeros(Float64, ns, N_up) # W_up is a ns x N_up matrix
-    W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_up[i, j] = dot(mc.Ham.U_up[i, :], U_upinvs[:, j])
-        end
-    end
-
-    @inbounds for i = 1:ns
-        for j = 1:N_up
-            W_down[i, j] = dot(mc.Ham.U_down[i, :], U_downinvs[:, j])
-        end
-    end
+    reevaluateW!(mc)
 end
 
 function getNeigh(rng, ns::Int, nn::AbstractArray)
@@ -120,10 +105,6 @@ end
     # the electrons are only allowed to swap between different spins and from an occupied site to an unoccupied site
     nn = mc.Ham.nn
     ns = length(mc.conf_up)
-    oldconfup = copy(Bool.(mc.conf_up))
-    oldconfdown = copy(Bool.(mc.conf_down))
-    U_upinvs = mc.Ham.U_up[oldconfup, :] \ I
-    U_downinvs = mc.Ham.U_down[oldconfdown, :] \ I
 
     # randomly select a site
     # flip two spins only to perform fast_update
@@ -154,26 +135,6 @@ end
             # mc.conf_down[site] = true
             ratio = mc.W_up[i, l_up] * mc.W_down[site, l_down]
         end
-        # elseif mc.conf_up[i] && !mc.conf_up[site]
-        #     # i is occupied, site is not for the up spin
-        #     mc.conf_up[i] = false
-        #     mc.conf_up[site] = true
-        #     ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, i, site)
-        # elseif !mc.conf_up[i] && mc.conf_up[site]
-        #     # i is empty, site is occupied for the up spin
-        #     mc.conf_up[i] = true
-        #     mc.conf_up[site] = false
-        #     ratio = getRatio(mc.Ham.U_up, U_upinvs, oldconfup, site, i)
-        # elseif mc.conf_down[i] && !mc.conf_down[site]
-        #     # i is occupied, site is not for the down spin
-        #     mc.conf_down[i] = false
-        #     mc.conf_down[site] = true
-        #     ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, i, site)
-        # elseif !mc.conf_down[i] && mc.conf_down[site]
-        #     # i is empty, site is occupied for the down spin
-        #     mc.conf_down[i] = true
-        #     mc.conf_down[site] = false
-        #     ratio = getRatio(mc.Ham.U_down, U_downinvs, oldconfdown, site, i)
     end
     if ratio^2 < 1.0 && rand(ctx.rng) > ratio^2
         # measure acceptance rate here
@@ -196,7 +157,13 @@ end
         end
         measure!(ctx, :acc, 1.0)
     end
-    # TODO: when sweep Ne time steps, re-evaluate the W matrices
+
+    # re-evaluate W matrices every Ne sweeps
+    number = min(sum(mc.conf_up), sum(mc.conf_down))
+    if ctx.sweeps % number == 0
+        reevaluateW!(mc)
+    end
+
     return nothing
 end
 
