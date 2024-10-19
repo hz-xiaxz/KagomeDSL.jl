@@ -32,7 +32,7 @@ function MC(params::AbstractDict)
     W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
     @inbounds for i = 1:ns
         for j = 1:N_up
-            W_up[i, j] = sum(Ham.U_up[i, :] .* U_upinvs[:, j])
+            W_up[i, j] = dot(Ham.U_up[i, :], U_upinvs[:, j])
             # it is not weird that some elements are zero
             # that's because i is occupied for now
         end
@@ -40,7 +40,7 @@ function MC(params::AbstractDict)
 
     @inbounds for i = 1:ns
         for j = 1:N_up
-            W_down[i, j] = sum(Ham.U_down[i, :] .* U_downinvs[:, j])
+            W_down[i, j] = dot(Ham.U_down[i, :], U_downinvs[:, j])
         end
     end
     return MC(Ham, conf_up, conf_down, W_up, W_down)
@@ -53,10 +53,11 @@ Update the W matrix
 ``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
 """
 function update_W(W::AbstractMatrix; l::Int, K::Int)
+    factors = [W[I, l] / W[K, l] for I in axes(W, 1)]
     new_W = similar(W)
-    @inbounds for I in axes(W)[1]
-        for j in axes(W)[2]
-            new_W[I, j] = W[I, j] - W[I, l] / W[K, l] * (W[K, j] - ((l == j) ? 1.0 : 0.0))
+    @inbounds for I in axes(W, 1)
+        for j in axes(W, 2)
+            new_W[I, j] = W[I, j] - factors[I] * (W[K, j] - (l == j ? 1.0 : 0.0))
         end
     end
     return new_W
@@ -89,28 +90,16 @@ Initialize the Monte Carlo object
     W_down = zeros(Float64, ns, N_down) # W_down is a ns x N_down matrix
     @inbounds for i = 1:ns
         for j = 1:N_up
-            W_up[i, j] = sum(mc.Ham.U_up[i, :] .* U_upinvs[:, j])
+            W_up[i, j] = dot(mc.Ham.U_up[i, :], U_upinvs[:, j])
         end
     end
 
     @inbounds for i = 1:ns
         for j = 1:N_up
-            W_down[i, j] = sum(mc.Ham.U_down[i, :] .* U_downinvs[:, j])
+            W_down[i, j] = dot(mc.Ham.U_down[i, :], U_downinvs[:, j])
         end
     end
 end
-
-function getRatio(
-    U::AbstractMatrix,
-    Uinvs::AbstractMatrix,
-    oldconf::BitVector;
-    old::Int,
-    new::Int,
-)
-    l = sum(oldconf[1:old])
-    return sum(U[new, :] .* Uinvs[:, l])
-end
-
 
 function getNeigh(rng, ns::Int, nn::AbstractArray)
     while true
@@ -153,25 +142,10 @@ end
             # mc.conf_up[site] = true # the new site is occupied
             # mc.conf_down[i] = true
             # mc.conf_down[site] = false
-            # @assert mc.conf_up[i] && mc.conf_down[site]
             l_up = sum(mc.conf_up[1:i])
             l_down = sum(mc.conf_down[1:site])
             ratio = mc.W_up[site, l_up] * mc.W_down[i, l_down]
-            ratio_W_up = mc.W_up[site, l_up]
-            ratio_get_up = getRatio(mc.Ham.U_up, U_upinvs, oldconfup; old = i, new = site)
-            new_conf = copy(Bool.(mc.conf_up))
-            new_conf[i] = false
-            new_conf[site] = true
-            ratio_true_up =
-                det(mc.Ham.U_up[Bool.(new_conf), :]) / det(mc.Ham.U_up[oldconfup, :])
-            if !isapprox(ratio_W_up, ratio_true_up; atol = 1e-14)
-                @show ratio_W_up, ratio_true_up
-            end
-            if !isapprox(ratio_get_up, ratio_true_up; atol = 1e-14)
-                @show ratio_get_up, ratio_true_up
-            end
         elseif flag == 2
-            # @assert mc.conf_up[site] && mc.conf_down[i]
             l_up = sum(mc.conf_up[1:site])
             l_down = sum(mc.conf_down[1:i])
             # mc.conf_up[i] = true
