@@ -225,6 +225,7 @@ end
 """
 
 return ``|x'> = H|x>``  where ``H`` is the Heisenberg Hamiltonian
+Note ``|x>`` here should also be a Mott state.
 """
 @inline function getxprime(Ham::Hamiltonian, x::BitStr{N,T}) where {N,T}
     H_mat = Ham.H_mat
@@ -289,7 +290,7 @@ Fast computing technique from Becca and Sorella 2017
         return 1.0
     end
     l = sum(oldconf[1:Rl]) # l-th electron
-    ratio = sum(U[k, :] .* Uinvs[:, l])
+    ratio = dot(U[k, :], Uinvs[:, l])
     return ratio
 end
 
@@ -302,11 +303,8 @@ The Hamiltonian should be the real one!
     @assert length(conf_up) == length(conf_down) "The length of the up and down configurations should be the same, got: $(length(conf_up)) and $(length(conf_down))"
     L = length(conf_up)
     # if double occupied state, no possibility to have a non-zero overlap
-    @inbounds for i = 1:L
-        if conf_up[i] == 1 && conf_down[i] == 1
-            return 0.0
-        end
-    end
+    any(conf_up .& conf_down) && return 0.0
+
     OL = 0.0
     U_upinvs = Ham.U_up[conf_up, :] \ I # do invs more efficiently
     U_downinvs = Ham.U_down[conf_down, :] \ I
@@ -315,14 +313,11 @@ The Hamiltonian should be the real one!
     conf_downstr = LongBitStr(conf_down)
     conf_upstr = LongBitStr(conf_up)
     @inbounds for (confstr, coff) in pairs(xprime)
-        if Gutzwiller(confstr) == 0.0
-            continue
-        else
-            update_up = det(Ham.U_up[Bool.(confstr[1:L]), :]) / det(Ham.U_up[conf_up, :])
-            update_down =
-                det(Ham.U_down[Bool.(confstr[L+1:2L]), :]) / det(Ham.U_down[conf_down, :])
-            OL += coff * update_up * update_down
-        end
+        Gutzwiller(confstr) == 0.0 && continue
+        update_up = fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr)
+        update_down =
+            fast_update(Ham.U_down, U_downinvs, SubDitStr(confstr, L + 1, 2L), conf_downstr)
+        OL += coff * update_up * update_down
     end
     return OL
 end

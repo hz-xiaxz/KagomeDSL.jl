@@ -1,12 +1,13 @@
 # Changes here will be overwritten by Copier
-AnswerStrategy: minimum
+AnswerStrategy: recommended
 Authors: hzxiaxz <hzxiaxz@gmail.com>
-Indentation: 4
+CodeOfConductContact: hzxiaxz@gmail.com
+JuliaIndentation: 4
 JuliaMinVersion: '1.10'
 License: MIT
 LicenseCopyrightHolders: hzxiaxz
 PackageName: KagomeDSL
 PackageOwner: hz-xiaxz
 PackageUUID: d7336a9d-6a7f-533d-babd-3df937e6f042
-_commit: v0.10.1
+_commit: v0.13.0
 _src_path: https://github.com/abelsiqueira/BestieTemplate.jl

@@ -32,21 +32,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
-          version: "~1.11.0-0"
+          version: "1"
       - name: Use Julia cache
         uses: julia-actions/cache@v2
-      - run: |
+      - name: Instantiate environment with development version of the package
+        run: |
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()'
-      - run: |
+      - name: Run doctest
+        run: |
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
             using KagomeDSL
             DocMeta.setdocmeta!(KagomeDSL, :DocTestSetup, :(using KagomeDSL); recursive=true)
             doctest(KagomeDSL)'
-      - run: julia --project=docs docs/make.jl
+      - name: Generate and deploy documentation
+        run: julia --project=docs docs/make.jl
         env:
           JULIA_PKG_SERVER: ""
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
