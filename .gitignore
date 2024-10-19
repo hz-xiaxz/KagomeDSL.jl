@@ -13,3 +13,4 @@ node_modules
 _research/
 data/
 notebook/
+scripts/debug_job.jl
