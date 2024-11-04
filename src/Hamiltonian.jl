@@ -113,7 +113,8 @@ function Hmat(lat::DoubleKagome)
             end
         end
     end
-    return tunneling
+    return -tunneling
+    # Seems like the sign of tunneling is opposite to the one in the paper
 end
 
 # temporarily separate the N_up and N_down subspaces
