@@ -4,11 +4,12 @@ using Carlo
 using Carlo.JobTools
 using Dates
 using LinearAlgebra: eigvals
+using ArnoldiMethod
 
 tm = TaskMaker()
-tm.thermalization = 2000
-tm.sweeps = 100000
-tm.binsize = 100
+tm.thermalization = 200
+tm.sweeps = 10
+tm.binsize = 1
 tm.n1 = 8
 tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
@@ -17,7 +18,9 @@ tm.PBC = (true, false)
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
 H = KagomeDSL.Hmat(lat)
-E = sort(eigvals(H))
+decomp, history = partialschur(H, nev = size(H, 1), tol = 1e-14, which = :SR)
+E = decomp.eigenvalues
+
 shell_pool = []
 # iteratively find degenerate spaces
 start_shell = 1
@@ -44,7 +47,7 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)PBC"
+savepath = dir * "/../data/" * "rightspectrum-mpi$(tm.n1)x$(tm.n2)PBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
