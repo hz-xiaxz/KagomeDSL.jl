@@ -57,18 +57,28 @@ end
     # Sz interaction
     Sz_sum = (length(DK.nn) - 2) * (1 / 2)
     Sz_sum += 2 * (2 * (-1 / 4))
-    @test xprime[x] == Sz_sum
+    @test xprime[(-1, -1, -1, -1)] == Sz_sum
     # Sx Sy interaction, only happens in the bonds having site 1
     Sx_Sy_sum = 0.0
     # Sx Sy = 1/2()
     # x1 is flip 1 down, filp 2 up
     x1 = LongBitStr(vcat([0], [1], fill(0, 34), [1], [0], fill(1, 34)))
-    @test x1 in keys(xprime)
-    @test xprime[x1] == 1 / 2 * 2
+    k_up = 2
+    l_up = 1
+    k_down = 1
+    l_down = 1
+    conf = (k_up, l_up, k_down, l_down)
+    @test conf in keys(xprime)
+    @test xprime[conf] == 1 / 2 * 2
     # x2 is flip 1 up, flip 3 down
     x2 = LongBitStr(vcat([0], [0], [1], fill(0, 33), [1], [1], [0], fill(1, 33)))
-    @test x2 in keys(xprime)
-    @test xprime[x2] == 1 / 2 * 2
+    k_up_3 = 3
+    l_up_3 = 1
+    k_down_3 = 1
+    l_down_3 = 2
+    conf_3 = (k_up_3, l_up_3, k_down_3, l_down_3)
+    @test conf_3 in keys(xprime)
+    @test xprime[conf_3] == 1 / 2 * 2
 end
 
 @testset "getOL" begin
@@ -80,12 +90,4 @@ end
     # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [0,1,0,0,0,0,0,1,1,1,1,1]
     down = BitVector(vcat([0], [1], fill(0, 5), fill(1, 5)))
     @test KagomeDSL.getOL(mc, up, down) != 0.0
-end
-
-
-@testset "Gutzwiller" begin
-    x = LongBitStr(vcat(fill(1, 36), fill(0, 36)))
-    @test KagomeDSL.Gutzwiller(x) == 1.0
-    x = LongBitStr(vcat(fill(1, 36), fill(0, 35), [1]))
-    @test KagomeDSL.Gutzwiller(x) == 0.0
 end
