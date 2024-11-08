@@ -186,6 +186,7 @@ function Sz(i::Int, x::BitStr{N,T}) where {N,T}
     elseif readbit(x, i) == 0 && readbit(x, i + L) == 1
         return -1.0 / 2
     else
+        error("site $i is not occupied")
         return 0.0
     end
 end
@@ -199,20 +200,15 @@ function spinInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N
     L = length(x) ÷ 2
     # 1/2 (S+_i S-_j + S-_i S+_j)
     # first term
-    if readbit(x, j) == 1 &&
-       readbit(x, j + L) == 0 &&
-       readbit(x, i) == 0 &&
-       readbit(x, i + L) == 1
+    # spin up at j, spin down at i
+    if readbit(x, j) == 1 && readbit(x, i + L) == 1
         _x = x
         _x &= ~indicator(T, j)
         _x |= indicator(T, j + L)
         _x &= ~indicator(T, i + L)
         _x |= indicator(T, i)
         xprime[_x] = get!(xprime, _x, 0.0) + 1.0 / 2.0
-    elseif readbit(x, j) == 0 &&
-           readbit(x, j + L) == 1 &&
-           readbit(x, i) == 1 &&
-           readbit(x, i + L) == 0
+    elseif readbit(x, j + L) == 1 && readbit(x, i) == 1
         _x = x
         _x &= ~indicator(T, j + L)
         _x |= indicator(T, j)

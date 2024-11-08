@@ -18,14 +18,14 @@ tm.PBC = (true, false)
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
 H = KagomeDSL.Hmat(lat)
-decomp, history = partialschur(H, nev = size(H, 1), tol = 1e-14, which = :SR)
+decomp, history = partialschur(H, nev = size(H, 1), tol = 1e-16, which = :SR)
 E = decomp.eigenvalues
 shell_pool = []
 # iteratively find degenerate spaces
 start_shell = 1
 while start_shell < length(E)
     global start_shell
-    num = findlast(x -> isapprox(x, E[start_shell], atol = 1e-10), E)
+    num = findlast(x -> isapprox(x, E[start_shell], atol = 1e-14), E)
     push!(shell_pool, (start_shell, num))
     start_shell = num + 1
 end
@@ -39,6 +39,7 @@ for i = first_num:(ns÷2)
         shell_pool,
     )
     if isempty(shell)
+        @show i
         task(tm; N_up = i, N_down = ns - i)
     end
 end
