@@ -167,18 +167,34 @@ end
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
-    # get E
-    try
-        OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
-        measure!(ctx, :OL, OL)
-    catch e
-        if e isa LinearAlgebra.SingularException
-            @warn "lu factorization failed"
-        else
-            rethrow(e)
+    let OL = nothing
+        function try_measure()
+            OL = getOL(mc, mc.conf_up, mc.conf_down)
+            measure!(ctx, :OL, OL)
+            return true
+        end
+
+        # First attempt
+        try
+            return try_measure()
+        catch e
+            if e isa LinearAlgebra.SingularException
+                @warn "First lu factorization failed, attempting recovery..."
+                # Recovery attempt
+                reevaluateW!(mc)
+                try
+                    return try_measure()
+                catch e2
+                    if e2 isa LinearAlgebra.SingularException
+                        @warn "Recovery failed: lu factorization failed twice"
+                        return false
+                    end
+                    rethrow(e2)  # Rethrow non-singular exceptions
+                end
+            end
+            rethrow(e)  # Rethrow non-singular exceptions
         end
     end
-    return nothing
 end
 
 @inline function Carlo.register_evaluables(
