@@ -113,7 +113,8 @@ function Hmat(lat::DoubleKagome)
             end
         end
     end
-    return tunneling
+    return -tunneling
+    # Seems like the sign of tunneling is opposite to the one in the paper
 end
 
 # temporarily separate the N_up and N_down subspaces
@@ -184,7 +185,11 @@ function Sz(i::Int, x::BitStr{N,T}) where {N,T}
         return 1.0 / 2
     elseif readbit(x, i) == 0 && readbit(x, i + L) == 1
         return -1.0 / 2
+    elseif readbit(x, i) == 1 && readbit(x, i + L) == 1
+        error("site $i is doubly occupied")
+        return 0.0
     else
+        error("site $i is not occupied")
         return 0.0
     end
 end
@@ -198,20 +203,15 @@ function spinInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N
     L = length(x) ÷ 2
     # 1/2 (S+_i S-_j + S-_i S+_j)
     # first term
-    if readbit(x, j) == 1 &&
-       readbit(x, j + L) == 0 &&
-       readbit(x, i) == 0 &&
-       readbit(x, i + L) == 1
+    # spin up at j, spin down at i
+    if readbit(x, j) == 1 && readbit(x, i + L) == 1
         _x = x
         _x &= ~indicator(T, j)
         _x |= indicator(T, j + L)
         _x &= ~indicator(T, i + L)
         _x |= indicator(T, i)
         xprime[_x] = get!(xprime, _x, 0.0) + 1.0 / 2.0
-    elseif readbit(x, j) == 0 &&
-           readbit(x, j + L) == 1 &&
-           readbit(x, i) == 1 &&
-           readbit(x, i + L) == 0
+    elseif readbit(x, j + L) == 1 && readbit(x, i) == 1
         _x = x
         _x &= ~indicator(T, j + L)
         _x |= indicator(T, j)
@@ -235,7 +235,7 @@ Note ``|x>`` here should also be a Mott state.
     xprime = Dict{typeof(x),Float64}()
     xprime[x] = 0.0
     # consider the spin up case
-    @inbounds for i = 1:L÷2
+    @inbounds for i = 1:L
         neigh_bond = filter(x -> x[1] == i, nn)
         for bond in neigh_bond
             @assert bond[2] > i "The second site should be larger than the first site, got: $(bond[2]) and $(i)"

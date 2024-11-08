@@ -8,22 +8,22 @@ using BitBasis
     @test isempty(findall(x -> !(x ≈ 0), H - H'))
     # test that the first row of H has only 2,3 position elements =1 and others =0
     @test H[1, 1] == 0
-    @test H[1, 2] == 1
-    @test H[1, 3] == 1
+    @test H[1, 2] == -1
+    @test H[1, 3] == -1
     for i = 4:36
         @test H[1, i] == 0
     end
-    @test H[3, 13] == -1
+    @test H[3, 13] == 1
 
     DK2 = KagomeDSL.DoubleKagome(1.0, 4, 3, (true, false))
     H2 = KagomeDSL.Hmat(DK2)
     @test isempty(findall(x -> !(x ≈ 0), H2 - H2'))
     @test H2 ≈ H2'
 
-    @test H2[1, 2] == 1
-    @test H2[1, 3] == 1
+    @test H2[1, 2] == -1
+    @test H2[1, 3] == -1
     @test CartesianIndex(1, 11) in DK2.nn
-    @test H2[1, 11] == 1 # horizontal PBC
+    @test H2[1, 11] == -1 # horizontal PBC
     @test H2[1, 3*4+1] == 0 # vertical OBC
 
     # other boundaries should be tested
@@ -49,18 +49,26 @@ end
     N_up = 1
     N_down = 0
     ham = KagomeDSL.Hamiltonian(N_up, N_down, DK)
-    x = LongBitStr(vcat(fill(1, 1), fill(0, 71)))
+    x = LongBitStr(vcat(fill(1, 1), fill(0, 35), fill(0, 1), fill(1, 35)))
+    # Sx Sy will flip 1 to spin down, the nearest neighbor will be spin up
+    # this gives 2 configurations
     xprime = KagomeDSL.getxprime(ham, x)
-    @test length(keys(xprime)) == 1
-    @test xprime[x] == 0.0
-
-    x1 = LongBitStr(vcat([1], fill(0, 36), [1], fill(0, 34)))
-    xprime1 = KagomeDSL.getxprime(ham, x1)
-    @test length(keys(xprime1)) == 2
-    @test xprime1[x1] == -0.5
-    k1 = LongBitStr(vcat([0], [1], fill(0, 34), [1], fill(0, 35)))
-    @test k1 in keys(xprime1)
-    @test xprime1[k1] == 1.0 / 2.0 * 2
+    @test length(keys(xprime)) == 3
+    # Sz interaction
+    Sz_sum = (length(DK.nn) - 2) * (1 / 2)
+    Sz_sum += 2 * (2 * (-1 / 4))
+    @test xprime[x] == Sz_sum
+    # Sx Sy interaction, only happens in the bonds having site 1
+    Sx_Sy_sum = 0.0
+    # Sx Sy = 1/2()
+    # x1 is flip 1 down, filp 2 up
+    x1 = LongBitStr(vcat([0], [1], fill(0, 34), [1], [0], fill(1, 34)))
+    @test x1 in keys(xprime)
+    @test xprime[x1] == 1 / 2 * 2
+    # x2 is flip 1 up, flip 3 down
+    x2 = LongBitStr(vcat([0], [0], [1], fill(0, 33), [1], [1], [0], fill(1, 33)))
+    @test x2 in keys(xprime)
+    @test xprime[x2] == 1 / 2 * 2
 end
 
 @testset "getOL" begin
