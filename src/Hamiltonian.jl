@@ -195,7 +195,7 @@ function Sz(i::Int, x::BitStr{N,T}) where {N,T}
 end
 
 function SzInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N,T}
-    xprime[x] = get!(xprime, x, 0.0) + Sz(i, x) * Sz(j, x)
+    xprime[(-1, -1, -1, -1)] = get!(xprime, (-1, -1, -1, -1), 0.0) + Sz(i, x) * Sz(j, x)
     return nothing
 end
 
@@ -205,19 +205,20 @@ function spinInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N
     # first term
     # spin up at j, spin down at i
     if readbit(x, j) == 1 && readbit(x, i + L) == 1
-        _x = x
-        _x &= ~indicator(T, j)
-        _x |= indicator(T, j + L)
-        _x &= ~indicator(T, i + L)
-        _x |= indicator(T, i)
-        xprime[_x] = get!(xprime, _x, 0.0) + 1.0 / 2.0
+        # K is the new index
+        K_up = i
+        K_down = j
+        l_up = sum(x[1:j])
+        l_down = sum(x[L+1:i+L])
+        new_conf = (K_up, l_up, K_down, l_down)
+        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 1.0 / 2.0
     elseif readbit(x, j + L) == 1 && readbit(x, i) == 1
-        _x = x
-        _x &= ~indicator(T, j + L)
-        _x |= indicator(T, j)
-        _x &= ~indicator(T, i)
-        _x |= indicator(T, i + L)
-        xprime[_x] = get!(xprime, _x, 0.0) + 1.0 / 2.0
+        K_up = j
+        K_down = i
+        l_up = sum(x[1:i])
+        l_down = sum(x[L+1:j+L])
+        new_conf = (K_up, l_up, K_down, l_down)
+        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 1.0 / 2.0
     end
     return nothing
 end
@@ -231,8 +232,7 @@ Note ``|x>`` here should also be a Mott state.
     H_mat = Ham.H_mat
     nn = Ham.nn
     @assert N == 2 * size(H_mat)[1] "x should have the same 2x length as $(size(H_mat)[1]),  got: $N"
-    xprime = Dict{typeof(x),Float64}()
-    xprime[x] = 0.0
+    xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
     # just scan through all the bonds
     @inbounds for bond in nn
         @assert bond[2] > bond[1] "The second site should be larger than the first site, got: $(bond[2]) and $(bond[1])"
@@ -242,45 +242,6 @@ Note ``|x>`` here should also be a Mott state.
         SzInteraction!(xprime, x, bond[2], bond[1])
     end
     return xprime
-end
-
-@inline function Gutzwiller(x::BitStr{N,T}) where {N,T}
-    L = length(x) ÷ 2
-    @inbounds for i = 1:L
-        if readbit(x, i) == 1 && readbit(x, i + L) == 1
-            return 0.0
-        end
-    end
-    return 1.0
-end
-
-@inline function fast_update(
-    W::AbstractMatrix,
-    newconf::Union{SubDitStr{D,N1,T1},DitStr{D,N1,T1}},
-    oldconf::BitStr{N,T},
-) where {D,N1,N,T,T1}
-    @assert length(newconf) == N "The length of the new configuration should be the same as the old configuration, got: $(length(newconf))(old) and $N(new)"
-    Rl = -1 # if not found should return error
-    k = -1
-    flag = 0
-    @inbounds for i = 1:N
-        if getindex(oldconf, i) == 1 && getindex(newconf, i) == 0
-            Rl = i # the old position of the l-th electron
-            flag += 1
-        end
-        if getindex(newconf, i) == 1 && getindex(oldconf, i) == 0
-            k = i # the new position of the l-th electron, K = R_l'
-            flag += 1
-        end
-        if flag == 2
-            break
-        end
-    end
-    if flag == 0
-        return 1.0
-    end
-    l = sum(oldconf[1:Rl])
-    return W[k, l]
 end
 
 @doc raw"""
@@ -297,14 +258,16 @@ The Hamiltonian should be the real one!
 
     OL = 0.0
     oldconfstr = LongBitStr(vcat(conf_up, conf_down))
-    conf_upstr = LongBitStr(conf_up)
-    conf_downstr = LongBitStr(conf_down)
     xprime = getxprime(mc.Ham, oldconfstr)
-    @inbounds for (confstr, coff) in pairs(xprime)
-        Gutzwiller(confstr) == 0.0 && continue
-        update_up = fast_update(mc.W_up, SubDitStr(confstr, 1, L), conf_upstr)
-        update_down = fast_update(mc.W_down, SubDitStr(confstr, L + 1, 2L), conf_downstr)
-        OL += coff * update_up * update_down
+    @inbounds for (conf, coff) in pairs(xprime)
+        if conf == (-1, -1, -1, -1)
+            OL += coff
+        else
+            # Gutzwiller(conf) == 0.0 && continue
+            update_up = mc.W_up[conf[1], conf[2]]
+            update_down = mc.W_down[conf[3], conf[4]]
+            OL += coff * update_up * update_down
+        end
     end
     return OL
 end
