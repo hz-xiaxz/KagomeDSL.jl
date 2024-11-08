@@ -258,14 +258,8 @@ end
     return 1.0
 end
 
-"""
-    fast_update(U::AbstractMatrix, Uinvs::AbstractMatrix, newconf::BitStr{N,T}, oldconf::BitStr{N,T}) where {N,T}
-
-Fast computing technique from Becca and Sorella 2017
-"""
 @inline function fast_update(
-    U::AbstractMatrix,
-    Uinvs::AbstractMatrix,
+    W::AbstractMatrix,
     newconf::Union{SubDitStr{D,N1,T1},DitStr{D,N1,T1}},
     oldconf::BitStr{N,T},
 ) where {D,N1,N,T,T1}
@@ -289,9 +283,8 @@ Fast computing technique from Becca and Sorella 2017
     if flag == 0
         return 1.0
     end
-    l = sum(oldconf[1:Rl]) # l-th electron
-    ratio = dot(U[k, :], Uinvs[:, l])
-    return ratio
+    l = sum(oldconf[1:Rl])
+    return W[k, l]
 end
 
 @doc raw"""
@@ -299,24 +292,22 @@ end
 The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
 The Hamiltonian should be the real one!
 """
-@inline function getOL(Ham::Hamiltonian, conf_up::BitVector, conf_down::BitVector)
+@inline function getOL(mc::AbstractMC, conf_up::BitVector, conf_down::BitVector)
     @assert length(conf_up) == length(conf_down) "The length of the up and down configurations should be the same, got: $(length(conf_up)) and $(length(conf_down))"
     L = length(conf_up)
     # if double occupied state, no possibility to have a non-zero overlap
-    any(conf_up .& conf_down) && return 0.0
+    # don't need to check this because MC will not propose double occupied states
+    # any(conf_up .& conf_down) && return 0.0
 
     OL = 0.0
-    U_upinvs = Ham.U_up[conf_up, :] \ I # do invs more efficiently
-    U_downinvs = Ham.U_down[conf_down, :] \ I
-    conf = LongBitStr(vcat(conf_up, conf_down))
-    xprime = getxprime(Ham, conf)
-    conf_downstr = LongBitStr(conf_down)
+    oldconfstr = LongBitStr(vcat(conf_up, conf_down))
     conf_upstr = LongBitStr(conf_up)
+    conf_downstr = LongBitStr(conf_down)
+    xprime = getxprime(mc.Ham, oldconfstr)
     @inbounds for (confstr, coff) in pairs(xprime)
         Gutzwiller(confstr) == 0.0 && continue
-        update_up = fast_update(Ham.U_up, U_upinvs, SubDitStr(confstr, 1, L), conf_upstr)
-        update_down =
-            fast_update(Ham.U_down, U_downinvs, SubDitStr(confstr, L + 1, 2L), conf_downstr)
+        update_up = fast_update(mc.W_up, SubDitStr(confstr, 1, L), conf_upstr)
+        update_down = fast_update(mc.W_down, SubDitStr(confstr, L + 1, 2L), conf_downstr)
         OL += coff * update_up * update_down
     end
     return OL

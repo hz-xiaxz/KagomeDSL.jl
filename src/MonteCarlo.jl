@@ -168,8 +168,16 @@ end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     # get E
-    OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
-    measure!(ctx, :OL, OL)
+    try
+        OL = getOL(mc.Ham, mc.conf_up, mc.conf_down)
+        measure!(ctx, :OL, OL)
+    catch e
+        if e isa LinearAlgebra.SingularException
+            @warn "lu factorization failed"
+        else
+            rethrow(e)
+        end
+    end
     return nothing
 end
 
