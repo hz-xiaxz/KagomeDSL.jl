@@ -185,6 +185,9 @@ function Sz(i::Int, x::BitStr{N,T}) where {N,T}
         return 1.0 / 2
     elseif readbit(x, i) == 0 && readbit(x, i + L) == 1
         return -1.0 / 2
+    elseif readbit(x, i) == 1 && readbit(x, i + L) == 1
+        error("site $i is doubly occupied")
+        return 0.0
     else
         error("site $i is not occupied")
         return 0.0
@@ -232,7 +235,7 @@ Note ``|x>`` here should also be a Mott state.
     xprime = Dict{typeof(x),Float64}()
     xprime[x] = 0.0
     # consider the spin up case
-    @inbounds for i = 1:L÷2
+    @inbounds for i = 1:L
         neigh_bond = filter(x -> x[1] == i, nn)
         for bond in neigh_bond
             @assert bond[2] > i "The second site should be larger than the first site, got: $(bond[2]) and $(i)"
