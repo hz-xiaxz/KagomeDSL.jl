@@ -160,7 +160,13 @@ end
     # re-evaluate W matrices every Ne sweeps
     number = min(sum(mc.conf_up), sum(mc.conf_down))
     if ctx.sweeps % number == 0
-        reevaluateW!(mc)
+        try
+            reevaluateW!(mc)
+        catch e
+            if e isa LinearAlgebra.SingularException
+                @warn "lu factorization failed, aborting re-evaluation..."
+            end
+        end
     end
 
     return nothing
