@@ -72,14 +72,14 @@ end
 end
 
 @testset "getOL" begin
-    DK = DoubleKagome(1.0, 2, 2, (false, false))
-    ham = KagomeDSL.Hamiltonian(6, 6, DK)
     # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [1,0,1,1,1,1,1,0,0,0,0,0]
     up = BitVector(vcat([1], [0], fill(1, 5), fill(0, 5)))
-    @test KagomeDSL.getOL(ham, up, up) == 0.0
+    mc = KagomeDSL.MC(
+        Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 6, :N_down => 6),
+    )
     # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [0,1,0,0,0,0,0,1,1,1,1,1]
     down = BitVector(vcat([0], [1], fill(0, 5), fill(1, 5)))
-    @test KagomeDSL.getOL(ham, up, down) != 0.0
+    @test KagomeDSL.getOL(mc, up, down) != 0.0
 end
 
 
