@@ -3,13 +3,13 @@ using KagomeDSL
 using Carlo
 using Carlo.JobTools
 using Dates
-using LinearAlgebra: eigvals
+using LinearAlgebra
 using ArnoldiMethod
 
 tm = TaskMaker()
-tm.thermalization = 200
-tm.sweeps = 10
-tm.binsize = 1
+tm.thermalization = 5000
+tm.sweeps = 200000
+tm.binsize = 100
 tm.n1 = 8
 tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
@@ -20,7 +20,6 @@ lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
 H = KagomeDSL.Hmat(lat)
 decomp, history = partialschur(H, nev = size(H, 1), tol = 1e-14, which = :SR)
 E = decomp.eigenvalues
-
 shell_pool = []
 # iteratively find degenerate spaces
 start_shell = 1
