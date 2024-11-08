@@ -234,16 +234,13 @@ Note ``|x>`` here should also be a Mott state.
     L = length(x) ÷ 2  # Int division
     xprime = Dict{typeof(x),Float64}()
     xprime[x] = 0.0
-    # consider the spin up case
-    @inbounds for i = 1:L
-        neigh_bond = filter(x -> x[1] == i, nn)
-        for bond in neigh_bond
-            @assert bond[2] > i "The second site should be larger than the first site, got: $(bond[2]) and $(i)"
-            spinInteraction!(xprime, x, i, bond[2])
-            spinInteraction!(xprime, x, bond[2], i)
-            SzInteraction!(xprime, x, i, bond[2])
-            SzInteraction!(xprime, x, bond[2], i)
-        end
+    # just scan through all the bonds
+    @inbounds for bond in nn
+        @assert bond[2] > bond[1] "The second site should be larger than the first site, got: $(bond[2]) and $(bond[1])"
+        spinInteraction!(xprime, x, bond[1], bond[2])
+        spinInteraction!(xprime, x, bond[2], bond[1])
+        SzInteraction!(xprime, x, bond[1], bond[2])
+        SzInteraction!(xprime, x, bond[2], bond[1])
     end
     return xprime
 end
