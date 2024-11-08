@@ -231,7 +231,6 @@ Note ``|x>`` here should also be a Mott state.
     H_mat = Ham.H_mat
     nn = Ham.nn
     @assert N == 2 * size(H_mat)[1] "x should have the same 2x length as $(size(H_mat)[1]),  got: $N"
-    L = length(x) ÷ 2  # Int division
     xprime = Dict{typeof(x),Float64}()
     xprime[x] = 0.0
     # just scan through all the bonds
