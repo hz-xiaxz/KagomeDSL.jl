@@ -176,50 +176,107 @@ end
 # end
 
 """
-    Sz(i::Int, x::BitStr{N,T}) where {N,T}
+    Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int}) -> Float64
+
 ``Sz = 1/2 (f^†_{↑} f_{↑} - f^†_{↓} f_{↓})``
+Calculate the z-component of spin at site `i` given up and down spin configurations.
+
+Returns:
+    +1/2 for up spin
+    -1/2 for down spin
+
+Throws:
+    ArgumentError: if site is doubly occupied or empty
+    BoundsError: if i is outside the valid range
 """
-function Sz(i::Int, x::BitStr{N,T}) where {N,T}
-    L = length(x) ÷ 2
-    if readbit(x, i) == 1 && readbit(x, i + L) == 0
-        return 1.0 / 2
-    elseif readbit(x, i) == 0 && readbit(x, i + L) == 1
-        return -1.0 / 2
-    elseif readbit(x, i) == 1 && readbit(x, i + L) == 1
-        error("site $i is doubly occupied")
-        return 0.0
+@inline function Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+    # Bounds check
+    n = length(kappa_up)
+    @boundscheck begin
+        1 ≤ i ≤ n || throw(BoundsError(kappa_up, i))
+        length(kappa_down) == n || throw(
+            DimensionMismatch(
+                "kappa_up and kappa_down must have same length, got $n and $(length(kappa_down))",
+            ),
+        )
+    end
+
+    # Check occupation state
+    up_occupied = is_occupied(kappa_up, i)
+    down_occupied = is_occupied(kappa_down, i)
+
+    # Use @fastmath for potential performance improvement in simple arithmetic
+    return if up_occupied && !down_occupied
+        0.5
+    elseif !up_occupied && down_occupied
+        -0.5
+    elseif up_occupied && down_occupied
+        throw(ArgumentError("Site $i is doubly occupied"))
     else
-        error("site $i is not occupied")
-        return 0.0
+        throw(ArgumentError("Site $i is unoccupied"))
     end
 end
 
-function SzInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N,T}
-    xprime[(-1, -1, -1, -1)] = get!(xprime, (-1, -1, -1, -1), 0.0) + Sz(i, x) * Sz(j, x)
+
+function SzInteraction!(
+    xprime::Dict,
+    kappa_up::Vector{Int},
+    kappa_down::Vector{Int},
+    i::Int,
+    j::Int,
+)
+    xprime[(-1, -1, -1, -1)] =
+        get!(xprime, (-1, -1, -1, -1), 0.0) +
+        Sz(i, kappa_up, kappa_down) * Sz(j, kappa_up, kappa_down)
     return nothing
 end
 
-function spinInteraction!(xprime::Dict, x::BitStr{N,T}, i::Int, j::Int) where {N,T}
-    L = length(x) ÷ 2
-    # 1/2 (S+_i S-_j + S-_i S+_j)
-    # first term
-    # spin up at j, spin down at i
-    if readbit(x, j) == 1 && readbit(x, i + L) == 1
-        # K is the new index
-        K_up = i
-        K_down = j
-        l_up = sum(x[1:j])
-        l_down = sum(x[L+1:i+L])
-        new_conf = (K_up, l_up, K_down, l_down)
-        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 1.0 / 2.0
-    elseif readbit(x, j + L) == 1 && readbit(x, i) == 1
-        K_up = j
-        K_down = i
-        l_up = sum(x[1:i])
-        l_down = sum(x[L+1:j+L])
+"""
+    spinInteraction!(xprime::Dict, kappa_up::Vector{Int}, kappa_down::Vector{Int}, i::Int, j::Int)
+
+Compute the spin flip term 1/2(S+_i S-_j + S-_i S+_j) contribution to xprime.
+
+Parameters:
+- `xprime`: Dictionary to store the new configurations and their coefficients
+- `kappa_up`: Configuration of up spins
+- `kappa_down`: Configuration of down spins
+- `i`, `j`: Sites where the spin interaction operates
+
+The function handles two cases:
+1. S+_i S-_j: when j has up spin and i has down spin
+2. S-_i S+_j: when i has up spin and j has down spin
+
+Each case contributes with coefficient 1/2.
+"""
+function spinInteraction!(
+    xprime::Dict,
+    kappa_up::Vector{Int},
+    kappa_down::Vector{Int},
+    i::Int,
+    j::Int,
+)
+    # Case 1: S+_i S-_j
+    # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
+    if is_occupied(kappa_up, j) && is_occupied(kappa_down, i)
+        K_up = i    # i gets the up spin
+        K_down = j  # j gets the down spin
+        l_up = kappa_up[j]   # take the up index from j
+        l_down = kappa_down[i]  # take the down index from i
         new_conf = (K_up, l_up, K_down, l_down)
         xprime[new_conf] = get!(xprime, new_conf, 0.0) + 1.0 / 2.0
     end
+
+    # Case 2: S-_i S+_j
+    # i has up spin (kappa_up[i] ≠ 0) and j has down spin (kappa_down[j] ≠ 0)
+    if is_occupied(kappa_up, i) && is_occupied(kappa_down, j)
+        K_up = j    # j gets the up spin
+        K_down = i  # i gets the down spin
+        l_up = kappa_up[i]   # take the up index from i
+        l_down = kappa_down[j]  # take the down index from j
+        new_conf = (K_up, l_up, K_down, l_down)
+        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 1.0 / 2.0
+    end
+
     return nothing
 end
 
@@ -228,18 +285,17 @@ end
 return ``|x'> = H|x>``  where ``H`` is the Heisenberg Hamiltonian
 Note ``|x>`` here should also be a Mott state.
 """
-@inline function getxprime(Ham::Hamiltonian, x::BitStr{N,T}) where {N,T}
-    H_mat = Ham.H_mat
+@inline function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     nn = Ham.nn
-    @assert N == 2 * size(H_mat)[1] "x should have the same 2x length as $(size(H_mat)[1]),  got: $N"
+    @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
     xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
     # just scan through all the bonds
     @inbounds for bond in nn
         @assert bond[2] > bond[1] "The second site should be larger than the first site, got: $(bond[2]) and $(bond[1])"
-        spinInteraction!(xprime, x, bond[1], bond[2])
-        spinInteraction!(xprime, x, bond[2], bond[1])
-        SzInteraction!(xprime, x, bond[1], bond[2])
-        SzInteraction!(xprime, x, bond[2], bond[1])
+        spinInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
+        spinInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1])
+        SzInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
+        SzInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1])
     end
     return xprime
 end
@@ -249,16 +305,14 @@ end
 The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
 The Hamiltonian should be the real one!
 """
-@inline function getOL(mc::AbstractMC, conf_up::BitVector, conf_down::BitVector)
-    @assert length(conf_up) == length(conf_down) "The length of the up and down configurations should be the same, got: $(length(conf_up)) and $(length(conf_down))"
-    L = length(conf_up)
+@inline function getOL(mc::AbstractMC, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+    @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
     # if double occupied state, no possibility to have a non-zero overlap
     # don't need to check this because MC will not propose double occupied states
     # any(conf_up .& conf_down) && return 0.0
 
     OL = 0.0
-    oldconfstr = LongBitStr(vcat(conf_up, conf_down))
-    xprime = getxprime(mc.Ham, oldconfstr)
+    xprime = getxprime(mc.Ham, kappa_up, kappa_down)
     @inbounds for (conf, coff) in pairs(xprime)
         if conf == (-1, -1, -1, -1)
             OL += coff

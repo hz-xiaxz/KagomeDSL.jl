@@ -1,4 +1,4 @@
-using BitBasis
+using Random
 
 @testset "Hamiltonian" begin
     DK = DoubleKagome(1.0, 4, 3, (false, false))
@@ -49,10 +49,11 @@ end
     N_up = 1
     N_down = 0
     ham = KagomeDSL.Hamiltonian(N_up, N_down, DK)
-    x = LongBitStr(vcat(fill(1, 1), fill(0, 35), fill(0, 1), fill(1, 35)))
+    kappa_up = vcat([1], fill(0, 35))
+    kappa_down = vcat([0], collect(1:35))
     # Sx Sy will flip 1 to spin down, the nearest neighbor will be spin up
     # this gives 2 configurations
-    xprime = KagomeDSL.getxprime(ham, x)
+    xprime = KagomeDSL.getxprime(ham, kappa_up, kappa_down)
     @test length(keys(xprime)) == 3
     # Sz interaction
     Sz_sum = (length(DK.nn) - 2) * (1 / 2)
@@ -62,7 +63,8 @@ end
     Sx_Sy_sum = 0.0
     # Sx Sy = 1/2()
     # x1 is flip 1 down, filp 2 up
-    x1 = LongBitStr(vcat([0], [1], fill(0, 34), [1], [0], fill(1, 34)))
+    kappa_up1 = vcat([0], [1], fill(0, 34))
+    kappa_down1 = vcat([1], [0], collect(2:35))
     k_up = 2
     l_up = 1
     k_down = 1
@@ -71,7 +73,6 @@ end
     @test conf in keys(xprime)
     @test xprime[conf] == 1 / 2 * 2
     # x2 is flip 1 up, flip 3 down
-    x2 = LongBitStr(vcat([0], [0], [1], fill(0, 33), [1], [1], [0], fill(1, 33)))
     k_up_3 = 3
     l_up_3 = 1
     k_down_3 = 1
@@ -83,11 +84,196 @@ end
 
 @testset "getOL" begin
     # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [1,0,1,1,1,1,1,0,0,0,0,0]
-    up = BitVector(vcat([1], [0], fill(1, 5), fill(0, 5)))
+    kappa_up = vcat([1], [0], collect(2:6), fill(0, 5))
     mc = KagomeDSL.MC(
         Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 6, :N_down => 6),
     )
     # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [0,1,0,0,0,0,0,1,1,1,1,1]
-    down = BitVector(vcat([0], [1], fill(0, 5), fill(1, 5)))
-    @test KagomeDSL.getOL(mc, up, down) != 0.0
+    kappa_down = vcat([0], [1], fill(0, 5), collect(2:6))
+    @test KagomeDSL.getOL(mc, kappa_up, kappa_down) != 0.0
+end
+
+@testset "Sz tests" begin
+    @testset "Basic spin states" begin
+        kappa_up = [1, 0, 2]
+        kappa_down = [0, 2, 0]
+
+        # Test up spin
+        @test Sz(1, kappa_up, kappa_down) == 0.5
+
+        # Test down spin
+        @test Sz(2, kappa_up, kappa_down) == -0.5
+    end
+
+    @testset "Error conditions" begin
+        kappa_up = [1, 2, 0]
+        kappa_down = [0, 2, 1]
+
+        # Test double occupation
+        @test_throws ArgumentError Sz(2, kappa_up, kappa_down)
+
+        # Test bounds error
+        @test_throws BoundsError Sz(4, kappa_up, kappa_down)
+        @test_throws BoundsError Sz(0, kappa_up, kappa_down)
+
+        # Test mismatched vector lengths
+        kappa_up_long = [1, 2, 0, 1]
+        @test_throws DimensionMismatch Sz(1, kappa_up_long, kappa_down)
+    end
+
+    @testset "Edge cases" begin
+        # Single site case
+        @test Sz(1, [1], [0]) == 0.5
+        @test Sz(1, [0], [1]) == -0.5
+        @test_throws ArgumentError Sz(1, [0], [0])
+        @test_throws ArgumentError Sz(1, [1], [1])
+    end
+
+    @testset "Type stability" begin
+        kappa_up = [1, 0]
+        kappa_down = [0, 1]
+
+        # Test that return type is always Float64
+        @inferred Sz(1, kappa_up, kappa_down)
+        @inferred Sz(2, kappa_up, kappa_down)
+    end
+
+    @testset "Large system" begin
+        n = 1000
+        kappa_up = zeros(Int, n)
+        kappa_down = zeros(Int, n)
+
+        # Set some spins
+        kappa_up[1] = 1     # up spin at start
+        kappa_down[end] = 1 # down spin at end
+
+        @test Sz(1, kappa_up, kappa_down) == 0.5
+        @test Sz(n, kappa_up, kappa_down) == -0.5
+        @test_throws ArgumentError Sz(2, kappa_up, kappa_down) # empty site
+    end
+
+    @testset "Random configurations" begin
+        n = 100
+        rng = Random.MersenneTwister(42)
+
+        # Create random valid configuration
+        sites = shuffle(rng, 1:n)
+        half_n = n ÷ 2
+
+        kappa_up = zeros(Int, n)
+        kappa_down = zeros(Int, n)
+
+        # Assign first half to up spins, second half to down spins
+        for (i, site) in enumerate(sites[1:half_n])
+            kappa_up[site] = i
+        end
+        for (i, site) in enumerate(sites[half_n+1:end])
+            kappa_down[site] = i
+        end
+
+        # Test random sites
+        for site in sites
+            if !iszero(kappa_up[site])
+                @test Sz(site, kappa_up, kappa_down) == 0.5
+            else
+                @test Sz(site, kappa_up, kappa_down) == -0.5
+            end
+        end
+    end
+end
+
+@testset "spinInteraction! tests" begin
+    @testset "Basic spin flips" begin
+        # Initialize test configuration
+        kappa_up = [1, 0, 2]   # up spins at sites 1 and 3
+        kappa_down = [0, 1, 0]  # down spin at site 2
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+
+        # Test S+_i S-_j: site 2(↓) -> site 1(↑)
+        spinInteraction!(xprime, kappa_up, kappa_down, 2, 1)
+        @test haskey(xprime, (2, 1, 1, 1))  # new configuration
+        @test xprime[(2, 1, 1, 1)] ≈ 0.5    # coefficient should be 1/2
+
+        # Test S-_i S+_j: site 1(↑) -> site 2(↓)
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        @test haskey(xprime, (2, 1, 1, 1))  # new configuration
+        @test xprime[(2, 1, 1, 1)] ≈ 0.5    # coefficient should be 1/2
+    end
+
+    @testset "No action cases" begin
+        kappa_up = [1, 0, 2]
+        kappa_down = [0, 1, 0]
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+
+        # Test when both sites have same spin
+        spinInteraction!(xprime, kappa_up, kappa_down, 1, 3)  # both up
+        @test isempty(xprime)
+
+        spinInteraction!(xprime, kappa_up, kappa_down, 2, 3)
+        @test !isempty(xprime)
+        @test xprime[(2, 2, 3, 1)] == 0.5
+    end
+
+    @testset "Multiple interactions" begin
+        kappa_up = [1, 0, 2]
+        kappa_down = [0, 1, 0]
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+
+        # Apply same interaction twice
+        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        @test xprime[(2, 1, 1, 1)] ≈ 1.0  # coefficients should add
+    end
+
+    @testset "Edge cases" begin
+        # Single site case
+        kappa_up = [1]
+        kappa_down = [0]
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+        spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
+        @test isempty(xprime)  # no self-interaction
+
+        # Empty configuration
+        kappa_up = Int[]
+        kappa_down = Int[]
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+        @test_throws BoundsError spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
+    end
+
+    @testset "Large system" begin
+        n = 1000
+        kappa_up = zeros(Int, n)
+        kappa_down = zeros(Int, n)
+        kappa_up[1] = 1    # up spin at first site
+        kappa_down[2] = 1  # down spin at second site
+
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+
+        @test haskey(xprime, (2, 1, 1, 1))
+        @test xprime[(2, 1, 1, 1)] ≈ 0.5
+    end
+
+    @testset "Accumulation behavior" begin
+        kappa_up = [1, 0, 2]
+        kappa_down = [0, 1, 0]
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+
+        # Add some initial value
+        xprime[(2, 1, 1, 1)] = 0.25
+
+        # Apply interaction
+        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        @test xprime[(2, 1, 1, 1)] ≈ 0.75  # 0.25 + 0.5
+    end
+
+    @testset "Type stability" begin
+        kappa_up = [1, 0]
+        kappa_down = [0, 1]
+        xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+
+        # Test that the function maintains type stability
+        @inferred spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+    end
 end

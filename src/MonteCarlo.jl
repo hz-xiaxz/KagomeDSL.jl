@@ -81,17 +81,15 @@ end
 """
     is_occupied(kappa::Vector{Int}, l::Int) -> Bool
 
-Check if a site is occupied in the kappa configuration vector.
+Check if site `l` is occupied in the kappa configuration vector.
 
-Parameters:
-- `kappa`: Configuration vector where non-zero values indicate occupied sites
-- `l`: Site index to check
-
-Returns:
-- `true` if site `l` is occupied (kappa[l] ≠ 0)
-- `false` if site `l` is unoccupied (kappa[l] = 0)
+Throws:
+    BoundsError: if l is outside the valid range of kappa
 """
-is_occupied(kappa::Vector{Int}, l::Int) = kappa[l] != 0
+@inline function is_occupied(kappa::Vector{Int}, l::Int)
+    @boundscheck 1 ≤ l ≤ length(kappa) || throw(BoundsError(kappa, l))
+    @inbounds return !iszero(kappa[l])
+end
 
 """
     MC(params::AbstractDict)
