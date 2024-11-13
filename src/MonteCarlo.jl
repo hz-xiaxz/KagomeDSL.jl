@@ -59,6 +59,9 @@ Returns:
 function tiled_U(U::AbstractMatrix, kappa::Vector{Int})
     m = size(U, 2)
     n = size(U, 1)
+    # check if kappa is valid
+    @assert length(filter(x -> x != 0, kappa)) == m ||
+            throw(ArgumentError("kappa ($kappa) is not valid"))
     length(kappa) == n || throw(
         DimensionMismatch(
             "Length of kappa ($(length(kappa))) must match number of rows in U ($n)",
@@ -248,20 +251,20 @@ matrices, a warning is issued and the simulation continues.
         # Update configurations and W matrices
         if flag == 1
             # Update W matrices
-            update_W!(mc.W_up, l_up, site)
-            update_W!(mc.W_down, l_down, i)
+            mc.W_up = update_W(mc.W_up; l = l_up, K = site)
+            mc.W_down = update_W(mc.W_down; l = l_down, K = i)
 
             # Update kappa configurations
             mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
             mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
         else
             # Update W matrices
-            update_W!(mc.W_up, l_up, i)
-            update_W!(mc.W_down, l_down, site)
+            mc.W_up = update_W(mc.W_up; l = l_up, K = i)
+            mc.W_down = update_W(mc.W_down; l = l_down, K = site)
 
             # Update kappa configurations
             mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
-            mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
+            mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
         end
 
         measure!(ctx, :acc, 1.0)
@@ -275,6 +278,7 @@ matrices, a warning is issued and the simulation continues.
         catch e
             if e isa LinearAlgebra.SingularException
                 @warn "lu factorization failed, aborting re-evaluation..."
+                throw(e)
             end
         end
     end
@@ -285,7 +289,7 @@ end
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     let OL = nothing
         function try_measure()
-            OL = getOL(mc, mc.conf_up, mc.conf_down)
+            OL = getOL(mc, mc.kappa_up, mc.kappa_down)
             measure!(ctx, :OL, OL)
             return true
         end

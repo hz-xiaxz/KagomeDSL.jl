@@ -211,9 +211,17 @@ Throws:
     elseif !up_occupied && down_occupied
         -0.5
     elseif up_occupied && down_occupied
-        throw(ArgumentError("Site $i is doubly occupied"))
+        throw(
+            ArgumentError(
+                "Site $i is doubly occupied, with kappa_up: $kappa_up and kappa_down: $kappa_down",
+            ),
+        )
     else
-        throw(ArgumentError("Site $i is unoccupied"))
+        throw(
+            ArgumentError(
+                "Site $i is unoccupied, with kappa_up: $kappa_up and kappa_down: $kappa_down",
+            ),
+        )
     end
 end
 
