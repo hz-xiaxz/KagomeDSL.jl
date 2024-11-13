@@ -39,7 +39,6 @@ for i = first_num:(ns÷2)
         shell_pool,
     )
     if isempty(shell)
-        @show i
         task(tm; N_up = i, N_down = ns - i)
     end
 end

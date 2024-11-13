@@ -1,5 +1,4 @@
 module KagomeDSL
-using BitBasis
 using LinearAlgebra
 using StatsBase
 using Random
@@ -10,9 +9,9 @@ using ArnoldiMethod
 export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice, ns
 include("Lattice.jl")
 
-export orbitals, Hamiltonian, fast_update
+export orbitals, Hamiltonian, fast_update, Sz, spinInteraction!
 include("Hamiltonian.jl")
 
-export MC, MCContext
+export MC, MCContext, tiled_U
 include("MonteCarlo.jl")
 end
