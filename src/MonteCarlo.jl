@@ -60,13 +60,13 @@ function tiled_U(U::AbstractMatrix, kappa::Vector{Int})
     m = size(U, 2)
     n = size(U, 1)
     # check if kappa is valid
-    @assert length(filter(x -> x != 0, kappa)) == m ||
-            throw(ArgumentError("kappa ($kappa) is not valid"))
     length(kappa) == n || throw(
         DimensionMismatch(
             "Length of kappa ($(length(kappa))) must match number of rows in U ($n)",
         ),
     )
+    length(filter(x -> x != 0, kappa)) == m ||
+        throw(ArgumentError("kappa ($kappa) is not valid"))
 
     # Create output matrix with same element type as U and requested size
     tiled_U = zeros(eltype(U), m, m)

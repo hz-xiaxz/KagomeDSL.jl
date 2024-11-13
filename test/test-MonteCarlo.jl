@@ -108,7 +108,7 @@ end
             4.0 5.0 6.0
             7.0 8.0 9.0
         ]
-        kappa = [2, 0, 1]  # Second row goes to position 1, third row goes to position 2
+        kappa = [2, 3, 1]
 
         result = tiled_U(U, kappa)
 
@@ -118,7 +118,7 @@ end
         # Test correct row placement
         @test result[1, :] == U[3, :]  # kappa[3] = 1
         @test result[2, :] == U[1, :]  # kappa[1] = 2
-        @test result[3, :] == zeros(3)  # kappa[2] = 0
+        @test result[3, :] == U[2, :]  # kappa[2] = 3
     end
 
     @testset "Zero kappa entries" begin
@@ -128,27 +128,23 @@ end
         ]
         kappa = [0, 0]
 
-        result = tiled_U(U, kappa)
-
-        # Test that all entries are zero when kappa is all zeros
-        @test all(iszero, result)
-        @test size(result) == (2, 2)
+        @test_throws ArgumentError tiled_U(U, kappa)
     end
 
     @testset "Different matrix shapes" begin
         # Test with rectangular matrix
         U = [
-            1.0 2.0 3.0
-            4.0 5.0 6.0
+            1.0 2.0
+            3.0 4.0
+            5.0 6.0
         ]
-        kappa = [1, 0]
+        kappa = [1, 0, 2]
 
         result = tiled_U(U, kappa)
 
-        @test size(result) == (3, 3)
+        @test size(result) == (2, 2)
         @test result[1, :] == U[1, :]
-        @test result[2, :] == zeros(3)
-        @test result[3, :] == zeros(3)
+        @test result[2, :] == U[3, :]
     end
 
     @testset "Complex numbers" begin
