@@ -1,22 +1,97 @@
 mutable struct MC <: AbstractMC
     Ham::Hamiltonian
-    conf_up::BitVector
-    conf_down::BitVector
+    kappa_up::Vector{Int}
+    kappa_down::Vector{Int}
     W_up::AbstractMatrix
     W_down::AbstractMatrix
 end
 
 function reevaluateW!(mc::MC)
     # Calculate inverse matrices
-    U_up_inv = mc.Ham.U_up[Bool.(mc.conf_up), :] \ I
-    U_down_inv = mc.Ham.U_down[Bool.(mc.conf_down), :] \ I
-
+    tiled_U_up = tiled_U(mc.Ham.U_up, mc.kappa_up)
+    tiled_U_down = tiled_U(mc.Ham.U_down, mc.kappa_down)
+    U_upinvs = tiled_U_up \ I
+    U_downinvs = tiled_U_down \ I
     # Calculate W matrices using matrix multiplication
-    mc.W_up = mc.Ham.U_up * U_up_inv
-    mc.W_down = mc.Ham.U_down * U_down_inv
+    mc.W_up = mc.Ham.U_up * U_upinvs
+    mc.W_down = mc.Ham.U_down * U_downinvs
 
     return nothing
 end
+
+function init_conf(rng::AbstractRNG, ns::Int, N_up::Int)
+    # dealing with conf_up
+    # Initialize array with zeros
+    kappa_up = zeros(Int, ns)
+
+    # Generate random positions for 1:N_up
+    positions = randperm(rng, ns)[1:N_up]
+
+    # Place 1:N_up at the random positions
+    for (i, pos) in enumerate(positions)
+        kappa_up[pos] = i
+    end
+    kappa_down = zeros(Int, ns)
+    # kappa_down should occupy the rest of the sites
+    res_pos = randperm(rng, ns - N_up)
+    for i = 1:ns
+        if kappa_up[i] == 0
+            kappa_down[i] = pop!(res_pos)
+        end
+    end
+
+    return kappa_up, kappa_down
+end
+
+"""
+    tiled_U(U::AbstractMatrix, kappa::Vector{Int})
+------------
+Creates a tiled matrix by rearranging rows of U according to kappa indices.
+
+Parameters:
+- `U`: Source matrix of size (n × m)
+- `kappa`: Vector of indices where each non-zero value l indicates that row Rl of U
+          should be placed at row l of the output
+
+Returns:
+- A matrix of size (m × m) with same element type as U
+"""
+function tiled_U(U::AbstractMatrix, kappa::Vector{Int})
+    m = size(U, 2)
+    n = size(U, 1)
+    length(kappa) == n || throw(
+        DimensionMismatch(
+            "Length of kappa ($(length(kappa))) must match number of rows in U ($n)",
+        ),
+    )
+
+    # Create output matrix with same element type as U and requested size
+    tiled_U = zeros(eltype(U), m, m)
+
+    @inbounds for (Rl, l) in enumerate(kappa)
+        if l != 0
+            (1 ≤ l ≤ m) || throw(BoundsError(tiled_U, (l, :)))
+            tiled_U[l, :] = U[Rl, :]
+        end
+    end
+
+    return tiled_U
+end
+
+"""
+    is_occupied(kappa::Vector{Int}, l::Int) -> Bool
+
+Check if a site is occupied in the kappa configuration vector.
+
+Parameters:
+- `kappa`: Configuration vector where non-zero values indicate occupied sites
+- `l`: Site index to check
+
+Returns:
+- `true` if site `l` is occupied (kappa[l] ≠ 0)
+- `false` if site `l` is unoccupied (kappa[l] = 0)
+"""
+is_occupied(kappa::Vector{Int}, l::Int) = kappa[l] != 0
 
 """
     MC(params::AbstractDict)
@@ -33,17 +108,16 @@ function MC(params::AbstractDict)
     Ham = Hamiltonian(N_up, N_down, lat)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
-    init_conf = zeros(Bool, ns)
-    init_conf[randperm(rng, ns)[1:N_up]] .= true
-    conf_up = BitVector(init_conf)
-    conf_down = fill(true, ns) - conf_up
-    U_upinvs = Ham.U_up[Bool.(conf_up), :] \ I
-    U_downinvs = Ham.U_down[Bool.(conf_down), :] \ I
+    kappa_up, kappa_down = init_conf(rng, ns, N_up)
+    tiled_U_up = tiled_U(Ham.U_up, kappa_up)
+    tiled_U_down = tiled_U(Ham.U_down, kappa_down)
+    U_upinvs = tiled_U_up \ I
+    U_downinvs = tiled_U_down \ I
     # calculate W_up and W_down
     # Calculate W matrices using matrix multiplication
     W_up = Ham.U_up * U_upinvs
     W_down = Ham.U_down * U_downinvs
-    return MC(Ham, conf_up, conf_down, W_up, W_down)
+    return MC(Ham, kappa_up, kappa_down, W_up, W_down)
 end
 
 """
@@ -77,10 +151,7 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    mc.conf_up = zeros(Bool, ns)
-    mc.conf_up[randperm(ctx.rng, ns)[1:N_up]] .= true
-    mc.conf_up = BitVector(mc.conf_up)
-    mc.conf_down = fill(true, ns) - mc.conf_up
+    kappa_up, kappa_down = init_conf(ctx.rng, ns, N_up)
     # calculate W_up and W_down
     reevaluateW!(mc)
 end
@@ -98,68 +169,109 @@ function getNeigh(rng, ns::Int, nn::AbstractArray)
     end
 end
 
-@inline function Carlo.sweep!(mc::MC, ctx::MCContext)
-    # should perform MCMC here
-    # MCMC scheme, generate a Mott state
-    # the electrons are only allowed to swap between different spins and from an occupied site to an unoccupied site
-    nn = mc.Ham.nn
-    ns = length(mc.conf_up)
+"""
+    Carlo.sweep!(mc::MC, ctx::MCContext) -> Nothing
 
-    # randomly select a site
-    # flip two spins only to perform fast_update
+Perform one Monte Carlo sweep for the Mott state simulation. This implements
+a two-spin swap update where electrons can exchange positions between different
+spin states at occupied sites.
+
+Algorithm:
+1. Randomly select two neighboring sites (i, site)
+2. Check if a valid swap is possible (both sites must be occupied by different spins)
+3. Calculate acceptance ratio based on determinant ratios
+4. Accept/reject the move using Metropolis criterion
+5. If accepted, update the W matrices and kappa configurations
+6. Periodically re-evaluate W matrices to maintain numerical stability
+
+Parameters:
+- `mc::MC`: Monte Carlo state containing:
+  * `kappa_up`, `kappa_down`: Occupation configurations for up/down spins
+  * `W_up`, `W_down`: Green's function matrices
+  * `Ham`: Hamiltonian object
+  * `nn`: Nearest neighbor list
+- `ctx::MCContext`: Monte Carlo context containing:
+  * Random number generator
+  * Sweep counter
+  * Measurement accumulators
+
+Updates:
+- Modifies `mc.kappa_up`, `mc.kappa_down`: Spin configurations
+- Modifies `mc.W_up`, `mc.W_down`: Green's function matrices
+- Records acceptance rate in `ctx`
+
+Returns:
+- `nothing`
+
+Note:
+The W matrices are re-evaluated periodically (every n_occupied sweeps) to
+maintain numerical stability. If the re-evaluation fails due to singular
+matrices, a warning is issued and the simulation continues.
+"""
+@inline function Carlo.sweep!(mc::MC, ctx::MCContext)
+    # MCMC scheme for Mott state
+    # Electrons swap between different spins at occupied sites
+    nn = mc.Ham.nn
+    ns = length(mc.kappa_up)
+
+    # Randomly select neighboring sites
     i, site = getNeigh(ctx.rng, ns, nn)
     ratio = 0
 
-    update_pool = [mc.conf_up[i] && mc.conf_down[site], mc.conf_up[site] && mc.conf_down[i]]
-    maybe_update = findall(x -> x == true, update_pool)
+    # Check possible updates: can swap if both sites are occupied by different spins
+    update_pool = [
+        is_occupied(mc.kappa_up, i) && is_occupied(mc.kappa_down, site),
+        is_occupied(mc.kappa_up, site) && is_occupied(mc.kappa_down, i),
+    ]
+
+    maybe_update = findall(identity, update_pool)
     if isempty(maybe_update)
         measure!(ctx, :acc, 0.0)
-        return Nothing
-    else
-        flag = sample(ctx.rng, maybe_update)
-        if flag == 1
-            # mc.conf_up[i] = false # the old site is empty
-            # mc.conf_up[site] = true # the new site is occupied
-            # mc.conf_down[i] = true
-            # mc.conf_down[site] = false
-            l_up = sum(mc.conf_up[1:i])
-            l_down = sum(mc.conf_down[1:site])
-            ratio = mc.W_up[site, l_up] * mc.W_down[i, l_down]
-        elseif flag == 2
-            l_up = sum(mc.conf_up[1:site])
-            l_down = sum(mc.conf_down[1:i])
-            # mc.conf_up[i] = true
-            # mc.conf_up[site] = false
-            # mc.conf_down[i] = false
-            # mc.conf_down[site] = true
-            ratio = mc.W_up[i, l_up] * mc.W_down[site, l_down]
-        end
+        return nothing
     end
+
+    flag = sample(ctx.rng, maybe_update)
+
+    # Calculate ratio based on selected move
+    l_up = flag == 1 ? mc.kappa_up[i] : mc.kappa_up[site]
+    l_down = flag == 1 ? mc.kappa_down[site] : mc.kappa_down[i]
+
+    # Calculate acceptance ratio
+    ratio = if flag == 1
+        mc.W_up[site, l_up] * mc.W_down[i, l_down]
+    else
+        mc.W_up[i, l_up] * mc.W_down[site, l_down]
+    end
+
+    # Metropolis acceptance step
     if ratio^2 < 1.0 && rand(ctx.rng) > ratio^2
-        # measure acceptance rate here
         measure!(ctx, :acc, 0.0)
     else
+        # Update configurations and W matrices
         if flag == 1
-            mc.W_up = update_W(mc.W_up; l = l_up, K = site)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = i)
-            mc.conf_up[i] = false
-            mc.conf_up[site] = true
-            mc.conf_down[i] = true
-            mc.conf_down[site] = false
-        elseif flag == 2
-            mc.W_up = update_W(mc.W_up; l = l_up, K = i)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = site)
-            mc.conf_up[i] = true
-            mc.conf_up[site] = false
-            mc.conf_down[i] = false
-            mc.conf_down[site] = true
+            # Update W matrices
+            update_W!(mc.W_up, l_up, site)
+            update_W!(mc.W_down, l_down, i)
+
+            # Update kappa configurations
+            mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
+            mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
+        else
+            # Update W matrices
+            update_W!(mc.W_up, l_up, i)
+            update_W!(mc.W_down, l_down, site)
+
+            # Update kappa configurations
+            mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
+            mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
         end
+
         measure!(ctx, :acc, 1.0)
     end
 
-    # re-evaluate W matrices every Ne sweeps
-    number = min(sum(mc.conf_up), sum(mc.conf_down))
-    if ctx.sweeps % number == 0
+    # Re-evaluate W matrices periodically
+    n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
+    if ctx.sweeps % n_occupied == 0
         try
             reevaluateW!(mc)
         catch e
@@ -213,13 +325,13 @@ end
 end
 
 @inline function Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
-    out["conf_up"] = Vector{Bool}(mc.conf_up)
-    out["conf_down"] = Vector{Bool}(mc.conf_down)
+    out["kappa_up"] = Vector{Int}(mc.kappa_up)
+    out["kappa_down"] = Vector{Int}(mc.kappa_down)
     return nothing
 end
 
 @inline function Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
-    mc.conf_up = BitVector(read(in, "conf_up"))
-    mc.conf_down = BitVector(read(in, "conf_down"))
+    mc.kappa_up = Vector{Int}(read(in, "kappa_up"))
+    mc.kappa_down = Vector{Int}(read(in, "kappa_down"))
     return nothing
 end

@@ -13,6 +13,6 @@ include("Lattice.jl")
 export orbitals, Hamiltonian, fast_update
 include("Hamiltonian.jl")
 
-export MC, MCContext
+export MC, MCContext, tiled_U
 include("MonteCarlo.jl")
 end
