@@ -287,32 +287,35 @@ matrices, a warning is issued and the simulation continues.
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
-    let OL = nothing
-        function try_measure()
-            OL = getOL(mc, mc.kappa_up, mc.kappa_down)
-            measure!(ctx, :OL, OL)
-            return true
-        end
-
-        # First attempt
-        try
-            return try_measure()
-        catch e
-            if e isa LinearAlgebra.SingularException
-                @warn "First lu factorization failed, attempting recovery..."
-                # Recovery attempt
-                reevaluateW!(mc)
-                try
-                    return try_measure()
-                catch e2
-                    if e2 isa LinearAlgebra.SingularException
-                        @warn "Recovery failed: lu factorization failed twice"
-                        return false
-                    end
-                    rethrow(e2)  # Rethrow non-singular exceptions
-                end
+    n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
+    if ctx.sweeps % n_occupied == 0
+        let OL = nothing
+            function try_measure()
+                OL = getOL(mc, mc.kappa_up, mc.kappa_down)
+                measure!(ctx, :OL, OL)
+                return true
             end
-            rethrow(e)  # Rethrow non-singular exceptions
+
+            # First attempt
+            try
+                return try_measure()
+            catch e
+                if e isa LinearAlgebra.SingularException
+                    @warn "First lu factorization failed, attempting recovery..."
+                    # Recovery attempt
+                    reevaluateW!(mc)
+                    try
+                        return try_measure()
+                    catch e2
+                        if e2 isa LinearAlgebra.SingularException
+                            @warn "Recovery failed: lu factorization failed twice"
+                            return false
+                        end
+                        rethrow(e2)  # Rethrow non-singular exceptions
+                    end
+                end
+                rethrow(e)  # Rethrow non-singular exceptions
+            end
         end
     end
 end
