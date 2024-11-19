@@ -3,29 +3,29 @@ using KagomeDSL
 using Carlo
 using Carlo.JobTools
 using Dates
-using LinearAlgebra
+using Logging
 using ArnoldiMethod
 
 tm = TaskMaker()
-tm.thermalization = 100_0
-tm.sweeps = 100_0
+tm.thermalization = 1_000
+tm.sweeps = 500
 tm.binsize = 1
-tm.n1 = 12
-tm.n2 = 12
+tm.n1 = 8
+tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, false)
 
 # pre check shell
 lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
 H = KagomeDSL.Hmat(lat)
-decomp, history = partialschur(H, nev = size(H, 1), tol = 1e-16, which = :SR)
+decomp, history = partialschur(H, nev = size(H, 1), tol = 1e-14, which = :SR)
 E = decomp.eigenvalues
 shell_pool = []
 # iteratively find degenerate spaces
 start_shell = 1
 while start_shell < length(E)
     global start_shell
-    num = findlast(x -> isapprox(x, E[start_shell], atol = 1e-14), E)
+    num = findlast(x -> isapprox(x, E[start_shell], atol = 1e-10), E)
     push!(shell_pool, (start_shell, num))
     start_shell = num + 1
 end
@@ -42,11 +42,13 @@ for i = first_num:(ns÷2)
         task(tm; N_up = i, N_down = ns - i)
     end
 end
-
-
+# if exists, delete it
+if isfile(KagomeDSL.debug_path * "xprime.jld2")
+    rm(KagomeDSL.debug_path * "xprime.jld2")
+end
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)PBC"
+savepath = dir * "/../data/" * "check$(tm.n1)x$(tm.n2)OBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
@@ -54,5 +56,9 @@ job = JobInfo(
     checkpoint_time = "30:00",
     run_time = "24:00:00",
 )
-
 Carlo.start(job, ARGS)
+
+# Carlo.cli_delete(job, Dict())
+# with_logger(Carlo.default_logger()) do
+#     start(Carlo.SingleScheduler, job)
+# end

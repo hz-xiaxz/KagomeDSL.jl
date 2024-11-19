@@ -1,3 +1,5 @@
+using Random
+
 mutable struct MC <: AbstractMC
     Ham::Hamiltonian
     kappa_up::Vector{Int}
@@ -10,11 +12,30 @@ function reevaluateW!(mc::MC)
     # Calculate inverse matrices
     tiled_U_up = tiled_U(mc.Ham.U_up, mc.kappa_up)
     tiled_U_down = tiled_U(mc.Ham.U_down, mc.kappa_down)
-    U_upinvs = tiled_U_up \ I
-    U_downinvs = tiled_U_down \ I
+    let U_upinvs = nothing, U_downinvs = nothing
+        try
+            U_upinvs = tiled_U_up \ I
+        catch e
+            if e isa LinearAlgebra.SingularException
+                @warn "lu factorization failed, aborting re-evaluation..."
+                @show tiled_U_up
+                throw(e)
+            end
+        end
+        try
+            U_downinvs = tiled_U_down \ I
+        catch e
+            if e isa LinearAlgebra.SingularException
+                @warn "lu factorization failed, aborting re-evaluation..."
+                @show tiled_U_down
+                throw(e)
+            end
+        end
+
+        mc.W_up = mc.Ham.U_up * U_upinvs
+        mc.W_down = mc.Ham.U_down * U_downinvs
+    end
     # Calculate W matrices using matrix multiplication
-    mc.W_up = mc.Ham.U_up * U_upinvs
-    mc.W_down = mc.Ham.U_down * U_downinvs
 
     return nothing
 end
@@ -95,6 +116,41 @@ Throws:
 end
 
 """
+    ensure_nonzero_det(rng, Ham, ns, N_up; max_attempts=100)
+
+Generate configurations with non-zero determinants for both up and down states.
+
+# Arguments
+- `rng`: Random number generator
+- `Ham`: Hamiltonian object
+- `ns`: Number of sites
+- `N_up`: Number of up spins
+- `max_attempts`: Maximum number of initialization attempts
+
+# Returns
+- `kappa_up`, `kappa_down`: Valid configurations with non-zero determinants
+"""
+function ensure_nonzero_det(rng, Ham, ns, N_up; max_attempts = 100)
+    attempts = 0
+    kappa_up, kappa_down = init_conf(rng, ns, N_up)
+
+    while attempts < max_attempts
+        tiled_U_up = tiled_U(Ham.U_up, kappa_up)
+        tiled_U_down = tiled_U(Ham.U_down, kappa_down)
+
+        if !(det(tiled_U_up) ≈ 0.0 || det(tiled_U_down) ≈ 0.0)
+            return kappa_up, kappa_down
+        end
+
+        @warn "det(tiled_U_up) = $(det(tiled_U_up)), det(tiled_U_down) = $(det(tiled_U_down))"
+        kappa_up, kappa_down = init_conf(rng, ns, N_up)
+        attempts += 1
+    end
+
+    error("Failed to find valid configuration after $max_attempts attempts")
+end
+
+"""
     MC(params::AbstractDict)
 ------------
 Create a Monte Carlo object
@@ -109,11 +165,9 @@ function MC(params::AbstractDict)
     Ham = Hamiltonian(N_up, N_down, lat)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
-    kappa_up, kappa_down = init_conf(rng, ns, N_up)
-    tiled_U_up = tiled_U(Ham.U_up, kappa_up)
-    tiled_U_down = tiled_U(Ham.U_down, kappa_down)
-    U_upinvs = tiled_U_up \ I
-    U_downinvs = tiled_U_down \ I
+    kappa_up, kappa_down = ensure_nonzero_det(rng, Ham, ns, N_up)
+    U_upinvs = tiled_U(Ham.U_up, kappa_up) \ I
+    U_downinvs = tiled_U(Ham.U_down, kappa_down) \ I
     # calculate W_up and W_down
     # Calculate W matrices using matrix multiplication
     W_up = Ham.U_up * U_upinvs
@@ -152,21 +206,42 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    kappa_up, kappa_down = init_conf(ctx.rng, ns, N_up)
+    mc.kappa_up, mc.kappa_down = ensure_nonzero_det(ctx.rng, mc.Ham, ns, N_up)
     # calculate W_up and W_down
     reevaluateW!(mc)
 end
 
-function getNeigh(rng, ns::Int, nn::AbstractArray)
-    while true
-        i = rand(rng, 1:ns)
-        neigh = filter(x -> x[1] == i, nn)
-        if length(neigh) == 0
-            continue
-        else
-            site = sample(rng, neigh)[2]
-            return i, site
+function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector)
+    # iterate over all possible moves
+    # if two sites connected by a bond, check if they are occupied by different spins
+    count = 0
+    for bond in nn
+        site1 = bond[1]
+        site2 = bond[2]
+        if is_occupied(kappa_up, site1) && is_occupied(kappa_down, site2)
+            count += 1
+        elseif is_occupied(kappa_up, site2) && is_occupied(kappa_down, site1)
+            count += 1
         end
+    end
+    return count
+end
+
+function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_down::Int)
+    if flag == 1
+        # Update W matrices
+        mc.W_up = update_W(mc.W_up; l = l_up, K = site)
+        mc.W_down = update_W(mc.W_down; l = l_down, K = i)
+        # Update kappa configurations
+        mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
+        mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
+    else
+        # Update W matrices
+        mc.W_up = update_W(mc.W_up; l = l_up, K = i)
+        mc.W_down = update_W(mc.W_down; l = l_down, K = site)
+        # Update kappa configurations
+        mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
+        mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
     end
 end
 
@@ -177,33 +252,6 @@ Perform one Monte Carlo sweep for the Mott state simulation. This implements
 a two-spin swap update where electrons can exchange positions between different
 spin states at occupied sites.
 
-Algorithm:
-1. Randomly select two neighboring sites (i, site)
-2. Check if a valid swap is possible (both sites must be occupied by different spins)
-3. Calculate acceptance ratio based on determinant ratios
-4. Accept/reject the move using Metropolis criterion
-5. If accepted, update the W matrices and kappa configurations
-6. Periodically re-evaluate W matrices to maintain numerical stability
-
-Parameters:
-- `mc::MC`: Monte Carlo state containing:
-  * `kappa_up`, `kappa_down`: Occupation configurations for up/down spins
-  * `W_up`, `W_down`: Green's function matrices
-  * `Ham`: Hamiltonian object
-  * `nn`: Nearest neighbor list
-- `ctx::MCContext`: Monte Carlo context containing:
-  * Random number generator
-  * Sweep counter
-  * Measurement accumulators
-
-Updates:
-- Modifies `mc.kappa_up`, `mc.kappa_down`: Spin configurations
-- Modifies `mc.W_up`, `mc.W_down`: Green's function matrices
-- Records acceptance rate in `ctx`
-
-Returns:
-- `nothing`
-
 Note:
 The W matrices are re-evaluated periodically (every n_occupied sweeps) to
 maintain numerical stability. If the re-evaluation fails due to singular
@@ -213,10 +261,20 @@ matrices, a warning is issued and the simulation continues.
     # MCMC scheme for Mott state
     # Electrons swap between different spins at occupied sites
     nn = mc.Ham.nn
-    ns = length(mc.kappa_up)
+
+    # calculate the number of neighbor states Z_{\mu}
+    Zmu = Z(nn, mc.kappa_up, mc.kappa_down)
+    Zmax = length(nn)
+    r = rand(ctx.rng)
+    if r > Zmu / Zmax
+        measure!(ctx, :acc, 0.0)
+        return nothing
+    end
 
     # Randomly select neighboring sites
-    i, site = getNeigh(ctx.rng, ns, nn)
+    bond = sample(ctx.rng, nn)
+    i = bond[1]
+    site = bond[2]
     ratio = 0
 
     # Check possible updates: can swap if both sites are occupied by different spins
@@ -236,38 +294,21 @@ matrices, a warning is issued and the simulation continues.
     # Calculate ratio based on selected move
     l_up = flag == 1 ? mc.kappa_up[i] : mc.kappa_up[site]
     l_down = flag == 1 ? mc.kappa_down[site] : mc.kappa_down[i]
-
     # Calculate acceptance ratio
     ratio = if flag == 1
         mc.W_up[site, l_up] * mc.W_down[i, l_down]
     else
         mc.W_up[i, l_up] * mc.W_down[site, l_down]
     end
-
     # Metropolis acceptance step
-    if ratio^2 < 1.0 && rand(ctx.rng) > ratio^2
-        measure!(ctx, :acc, 0.0)
-    else
-        # Update configurations and W matrices
-        if flag == 1
-            # Update W matrices
-            mc.W_up = update_W(mc.W_up; l = l_up, K = site)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = i)
-
-            # Update kappa configurations
-            mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
-            mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
-        else
-            # Update W matrices
-            mc.W_up = update_W(mc.W_up; l = l_up, K = i)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = site)
-
-            # Update kappa configurations
-            mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
-            mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
-        end
-
+    if ratio^2 >= 1 && r < Zmu / Zmax
+        update_configurations!(mc, flag, i, site, l_up, l_down)
         measure!(ctx, :acc, 1.0)
+    elseif ratio^2 < 1 && r < (Zmu / Zmax) * ratio^2
+        update_configurations!(mc, flag, i, site, l_up, l_down)
+        measure!(ctx, :acc, 1.0)
+    else
+        measure!(ctx, :acc, 0.0)
     end
 
     # Re-evaluate W matrices periodically
@@ -285,10 +326,39 @@ matrices, a warning is issued and the simulation continues.
 
     return nothing
 end
-
+const dir = @__DIR__
+const debug_path = dir * "/../data/" * "check2x1OBC/xprime/"
+using JLD2
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
+        measure!(ctx, :kappa_up, mc.kappa_up)
+        measure!(ctx, :kappa_down, mc.kappa_down)
+        measure!(ctx, :W_up, mc.W_up)
+        # write xprime to file
+        # if not exist, create it
+        if !isdir(debug_path)
+            mkpath(debug_path)
+        end
+        let xprime = KagomeDSL.getxprime(mc.Ham, mc.kappa_up, mc.kappa_down)
+            filepath = debug_path * "xprime.jld2"
+            mapped_xprime =
+                Dict("$(k[1]),$(k[2]),$(k[3]),$(k[4])" => v for (k, v) in xprime)
+
+            # Load existing data if file exists
+            if isfile(filepath)
+                existing_data = JLD2.load(filepath)
+                # Merge existing data with new data
+                counter = length(existing_data) + 1
+                JLD2.save(
+                    filepath,
+                    merge(existing_data, Dict("xprime_$counter" => mapped_xprime)),
+                )
+            else
+                # If file doesn't exist, create it with initial data
+                JLD2.save(filepath, Dict("xprime_1" => mapped_xprime))
+            end
+        end
         let OL = nothing
             function try_measure()
                 OL = getOL(mc, mc.kappa_up, mc.kappa_down)
