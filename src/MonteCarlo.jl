@@ -138,7 +138,7 @@ function ensure_nonzero_det(rng, Ham, ns, N_up; max_attempts = 100)
         tiled_U_up = tiled_U(Ham.U_up, kappa_up)
         tiled_U_down = tiled_U(Ham.U_down, kappa_down)
 
-        if !(det(tiled_U_up) ≈ 0.0 || det(tiled_U_down) ≈ 0.0)
+        if !(det(tiled_U_up) ≈ 1e-10 || det(tiled_U_down) ≈ 1e-10)
             return kappa_up, kappa_down
         end
 
@@ -326,39 +326,9 @@ matrices, a warning is issued and the simulation continues.
 
     return nothing
 end
-const dir = @__DIR__
-const debug_path = dir * "/../data/" * "check2x1OBC/xprime/"
-using JLD2
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
-        measure!(ctx, :kappa_up, mc.kappa_up)
-        measure!(ctx, :kappa_down, mc.kappa_down)
-        measure!(ctx, :W_up, mc.W_up)
-        # write xprime to file
-        # if not exist, create it
-        if !isdir(debug_path)
-            mkpath(debug_path)
-        end
-        let xprime = KagomeDSL.getxprime(mc.Ham, mc.kappa_up, mc.kappa_down)
-            filepath = debug_path * "xprime.jld2"
-            mapped_xprime =
-                Dict("$(k[1]),$(k[2]),$(k[3]),$(k[4])" => v for (k, v) in xprime)
-
-            # Load existing data if file exists
-            if isfile(filepath)
-                existing_data = JLD2.load(filepath)
-                # Merge existing data with new data
-                counter = length(existing_data) + 1
-                JLD2.save(
-                    filepath,
-                    merge(existing_data, Dict("xprime_$counter" => mapped_xprime)),
-                )
-            else
-                # If file doesn't exist, create it with initial data
-                JLD2.save(filepath, Dict("xprime_1" => mapped_xprime))
-            end
-        end
         let OL = nothing
             function try_measure()
                 OL = getOL(mc, mc.kappa_up, mc.kappa_down)
