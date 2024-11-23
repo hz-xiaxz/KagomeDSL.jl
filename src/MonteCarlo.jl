@@ -11,8 +11,8 @@ end
 
 function reevaluateW!(mc::MC)
     # Calculate inverse matrices
-    tiled_U_up = tiled_U(mc.Ham.U_up, mc.kappa_up)
-    tiled_U_down = tiled_U(mc.Ham.U_down, mc.kappa_down)
+    tiled_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
+    tiled_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
     let U_upinvs = nothing, U_downinvs = nothing
         try
             U_upinvs = tiled_U_up \ I
@@ -127,7 +127,7 @@ function find_similar_rows(U::AbstractMatrix; tol::Float64 = 1e-10)
 end
 
 """
-    better_init_conf(rng::AbstractRNG, ns::Int, N_up::Int)
+    better_init_conf(rng::AbstractRNG, ns::Int, N_up::Int, Ham::AbstractHamiltonian)
 
 Initialize configurations avoiding similar rows in U matrices.
 Try to avoid placing similar rows in kappa_up first, then find possible positions for kappa_down
@@ -217,14 +217,15 @@ function better_init_conf(
         kappa_down[pos] = pop!(remaining_down)
         deleteat!(available_down, findfirst(==(pos), available_down))
     end
-
+    @assert count(!iszero, kappa_up) == N_up "kappa_up is not valid, got $(kappa_up)"
+    @assert count(!iszero, kappa_down) == ns - N_up "kappa_down is not valid, got $(kappa_down)"
     return kappa_up, kappa_down
 end
 
 """
-    tiled_U(U::AbstractMatrix, kappa::Vector{Int})
+    tilde_U(U::AbstractMatrix, kappa::Vector{Int})
 ------------
-Creates a tiled matrix by rearranging rows of U according to kappa indices.
+Creates a tilde matrix by rearranging rows of U according to kappa indices.
 
 Parameters:
 - `U`: Source matrix of size (n × m)
@@ -234,7 +235,7 @@ Parameters:
 Returns:
 - A matrix of size (m × m) with same element type as U
 """
-function tiled_U(U::AbstractMatrix, kappa::Vector{Int})
+function tilde_U(U::AbstractMatrix, kappa::Vector{Int})
     m = size(U, 2)
     n = size(U, 1)
     # check if kappa is valid
@@ -247,16 +248,16 @@ function tiled_U(U::AbstractMatrix, kappa::Vector{Int})
         throw(ArgumentError("kappa ($kappa) is not valid"))
 
     # Create output matrix with same element type as U and requested size
-    tiled_U = zeros(eltype(U), m, m)
+    tilde_U = zeros(eltype(U), m, m)
 
     @inbounds for (Rl, l) in enumerate(kappa)
         if l != 0
-            (1 ≤ l ≤ m) || throw(BoundsError(tiled_U, (l, :)))
-            tiled_U[l, :] = U[Rl, :]
+            (1 ≤ l ≤ m) || throw(BoundsError(tilde_U, (l, :)))
+            tilde_U[l, :] = U[Rl, :]
         end
     end
 
-    return tiled_U
+    return tilde_U
 end
 
 """
@@ -299,14 +300,14 @@ function ensure_nonzero_det(
     det_tol = min(10.0^(-ns), eps(Float64))
 
     while attempts < max_attempts
-        tiled_U_up = tiled_U(Ham.U_up, kappa_up)
-        tiled_U_down = tiled_U(Ham.U_down, kappa_down)
+        tilde_U_up = tilde_U(Ham.U_up, kappa_up)
+        tilde_U_down = tilde_U(Ham.U_down, kappa_down)
 
-        if abs(det(tiled_U_up)) > det_tol && abs(det(tiled_U_down)) > det_tol
+        if abs(det(tilde_U_up)) > det_tol && abs(det(tilde_U_down)) > det_tol
             return kappa_up, kappa_down
         end
 
-        # @warn "det(tiled_U_up) = $(det(tiled_U_up)), det(tiled_U_down) = $(det(tiled_U_down))"
+        # @warn "det(tilde_U_up) = $(det(tilde_U_up)), det(tilde_U_down) = $(det(tilde_U_down))"
         kappa_up, kappa_down = better_init_conf(rng, ns, N_up, Ham)
         attempts += 1
     end
@@ -329,8 +330,8 @@ function MC(params::AbstractDict)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     kappa_up, kappa_down = ensure_nonzero_det(rng, Ham, ns, N_up, max_attempts = 100)
-    U_upinvs = tiled_U(Ham.U_up, kappa_up) \ I
-    U_downinvs = tiled_U(Ham.U_down, kappa_down) \ I
+    U_upinvs = tilde_U(Ham.U_up, kappa_up) \ I
+    U_downinvs = tilde_U(Ham.U_down, kappa_down) \ I
     # calculate W_up and W_down
     # Calculate W matrices using matrix multiplication
     W_up = Ham.U_up * U_upinvs
