@@ -220,3 +220,139 @@ end
         @test eltype(result_int) == eltype(U_int)
     end
 end
+
+@testset "Z function tests" begin
+    # Test Néel state configuration
+    # Sites: 0-1-2 in a line, each connected to neighbors
+    nn = [CartesianIndex(1, 2), CartesianIndex(2, 3), CartesianIndex(1, 3)]  # nearest neighbor bonds
+    kappa_up = [0, 1, 0]   # up spins at sites 0,2
+    kappa_down = [1, 0, 2] # down spins at sites 1
+
+    @test KagomeDSL.Z(nn, kappa_up, kappa_down) == 2
+end
+
+@testset "find_similar_rows" begin
+    @testset "exact matches" begin
+        # Test matrix with exactly matching rows
+        U = [
+            1.0 2.0 3.0
+            4.0 5.0 6.0
+            1.0 2.0 3.0  # matches row 1
+            7.0 8.0 9.0
+            4.0 5.0 6.0  # matches row 2
+        ]
+
+        groups = find_similar_rows(U)
+
+        # Sort groups and their contents for consistent comparison
+        sorted_groups = sort!([sort!(g) for g in groups])
+
+        @test length(groups) == 3  # Should find 3 distinct groups
+        @test [1, 3] in sorted_groups  # First matching pair
+        @test [2, 5] in sorted_groups  # Second matching pair
+        @test [4] in sorted_groups     # Unique row
+    end
+
+    @testset "approximate matches" begin
+        # Test matrix with approximately matching rows
+        U = [
+            1.0 2.0 3.0
+            1.0+1e-11 2.0-1e-11 3.0+1e-11
+            4.0 5.0 6.0
+            4.0+1e-11 5.0-1e-11 6.0
+        ]
+
+        groups = find_similar_rows(U, tol = 1e-10)
+        sorted_groups = sort!([sort!(g) for g in groups])
+
+        @test length(groups) == 2  # Should find 2 groups
+        @test [1, 2] in sorted_groups  # First approximate pair
+        @test [3, 4] in sorted_groups  # Second approximate pair
+    end
+
+    @testset "no matches" begin
+        # Test matrix with no similar rows
+        U = [
+            1.0 2.0 3.0
+            4.0 5.0 6.0
+            7.0 8.0 9.0
+        ]
+
+        groups = find_similar_rows(U)
+        @test length(groups) == 3  # Each row should be in its own group
+        @test all(length(g) == 1 for g in groups)
+    end
+
+    @testset "different tolerances" begin
+        U = [
+            1.0 2.0 3.0
+            1.0+1e-8 2.0-1e-8 3.0+1e-8
+        ]
+
+        # Should find as different with small tolerance
+        groups_strict = find_similar_rows(U, tol = 1e-9)
+        @test length(groups_strict) == 2
+
+        # Should find as similar with larger tolerance
+        groups_loose = find_similar_rows(U, tol = 1e-7)
+        @test length(groups_loose) == 1
+    end
+
+    @testset "single row" begin
+        U = [1.0 2.0 3.0]
+        groups = find_similar_rows(U)
+        @test length(groups) == 1
+        @test groups[1] == [1]
+    end
+
+    @testset "empty matrix" begin
+        U = Matrix{Float64}(undef, 0, 3)
+        groups = find_similar_rows(U)
+        @test isempty(groups)
+    end
+end
+
+@testset "better_init_conf" begin
+    # Create a simple Hamiltonian mock with known similar rows
+    struct MockHamiltonian <: AbstractHamiltonian
+        U_up::Matrix{Float64}
+        U_down::Matrix{Float64}
+        nn::Vector{Tuple{Int,Int}}
+    end
+
+    # Test matrix with some similar rows
+    U_up = [
+        1.0 2.0 3.0
+        1.0 2.0 3.0  # similar to row 1
+        4.0 5.0 6.0
+        7.0 8.0 9.0
+    ]
+
+    U_down = [
+        1.0 2.0 3.0
+        4.0 5.0 6.0
+        4.0 5.0 6.0  # similar to row 2
+        7.0 8.0 9.0
+    ]
+
+    Ham = MockHamiltonian(U_up, U_down, [(1, 2), (2, 3), (3, 4)])
+    rng = Random.MersenneTwister(42)  # Fixed seed for reproducibility
+
+    ns = 4  # number of sites
+    N_up = 2  # number of up spins
+
+    kappa_up, kappa_down = better_init_conf(rng, ns, N_up, Ham)
+
+    @test length(kappa_up) == ns
+    @test length(kappa_down) == ns
+    @test count(!iszero, kappa_up) == N_up
+    @test count(!iszero, kappa_down) == ns - N_up
+
+    # Check that similar rows aren't both occupied in kappa_up
+    similar_rows_up = findall(x -> x ≈ U_up[1, :], eachrow(U_up))
+    @test count(!iszero, kappa_up[similar_rows_up]) ≤ 1
+
+    # Check that similar rows aren't both occupied in kappa_down
+    similar_rows_down = findall(x -> x ≈ U_down[2, :], eachrow(U_down))
+    @test count(!iszero, kappa_down[similar_rows_down]) ≤ 1
+end
