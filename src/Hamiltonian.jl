@@ -1,3 +1,4 @@
+abstract type AbstractHamiltonian end
 # fluxed transition rule defined in the paper
 # (i, j) i is the initial state, j is the final state
 # in-cell transitions, needs index1 mod 6 == index2 mod 6
@@ -130,7 +131,7 @@ function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
     return U_up, U_down
 end
 
-struct Hamiltonian
+struct Hamiltonian <: AbstractHamiltonian
     N_up::Int
     N_down::Int
     U_up::Matrix{Float64}

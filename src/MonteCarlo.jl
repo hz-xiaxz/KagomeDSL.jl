@@ -8,10 +8,6 @@ mutable struct MC <: AbstractMC
     W_down::AbstractMatrix
 end
 
-function Carlo.is_thermalized(ctx::MCContext)
-    # Hack
-    return ctx.thermalization_sweeps == -1
-end
 
 function reevaluateW!(mc::MC)
     # Calculate inverse matrices
@@ -62,6 +58,164 @@ function init_conf(rng::AbstractRNG, ns::Int, N_up::Int)
         if kappa_up[i] == 0
             kappa_down[i] = pop!(res_pos)
         end
+    end
+
+    return kappa_up, kappa_down
+end
+
+"""
+    find_similar_rows(U::AbstractMatrix; tol::Float64=1e-10) -> Vector{Vector{Int}}
+
+Find groups of similar rows in matrix U where elements are approximately equal within tolerance.
+
+# Arguments
+- `U`: Input matrix
+- `tol`: Tolerance for considering elements approximately equal
+
+# Returns
+- Vector of vectors containing indices of similar rows
+"""
+function find_similar_rows(U::AbstractMatrix; tol::Float64 = 1e-10)
+    n_rows = size(U, 1)
+    # Store row hash -> indices mapping
+    row_groups = Dict{UInt64,Vector{Int}}()
+    # Track which rows have been grouped
+    grouped = falses(n_rows)
+
+    # Hash function for a row (using rounded values to handle floating point)
+    function hash_row(row)
+        return hash(round.(row ./ tol) .* tol)
+    end
+
+    # Compare two rows element-wise
+    function rows_similar(row1, row2)
+        return all(abs.(row1 .- row2) .< tol)
+    end
+
+    # First pass: group by hash
+    for i = 1:n_rows
+        row = @view U[i, :]
+        h = hash_row(row)
+        push!(get!(row_groups, h, Int[]), i)
+    end
+
+    # Second pass: verify groups and split if needed
+    result = Vector{Vector{Int}}()
+
+    for (_, indices) in row_groups
+        while !isempty(indices)
+            group = Int[]
+            ref_idx = pop!(indices)
+            push!(group, ref_idx)
+            ref_row = @view U[ref_idx, :]
+
+            # Compare with remaining rows in this hash group
+            i = length(indices)
+            while i > 0
+                if rows_similar(ref_row, @view U[indices[i], :])
+                    push!(group, indices[i])
+                    deleteat!(indices, i)
+                end
+                i -= 1
+            end
+
+            push!(result, group)
+        end
+    end
+
+    return result
+end
+
+"""
+    better_init_conf(rng::AbstractRNG, ns::Int, N_up::Int)
+
+Initialize configurations avoiding similar rows in U matrices.
+Try to avoid placing similar rows in kappa_up first, then find possible positions for kappa_down
+
+# Arguments
+- `rng`: Random number generator
+- `ns`: Number of sites
+- `N_up`: Number of up spins
+
+# Returns
+- `kappa_up`, `kappa_down`: Initial configurations
+"""
+function better_init_conf(
+    rng::AbstractRNG,
+    ns::Int,
+    N_up::Int,
+    Ham::AbstractHamiltonian;
+    tol::Float64 = 1e-10,
+)
+    # Find groups of similar rows in both U matrices
+    similar_up = find_similar_rows(Ham.U_up, tol = tol)
+    similar_down = find_similar_rows(Ham.U_down, tol = tol)
+
+    # Create masks to avoid placing similar rows in same kappa
+    up_mask = trues(ns)
+    down_mask = trues(ns)
+
+    # Initialize arrays
+    kappa_up = zeros(Int, ns)
+    kappa_down = zeros(Int, ns)
+
+    # Place values avoiding similar rows
+    remaining_up = collect(N_up:-1:1)
+    remaining_down = collect((ns-N_up):-1:1)
+
+    # First handle similar groups
+    for group in similar_up
+        if length(group) > 1
+            # Randomly select one position from group for up spins
+            chosen = rand(rng, group)
+            if !isempty(remaining_up)
+                kappa_up[chosen] = pop!(remaining_up)
+                # Mark other positions as unavailable for up spins
+                down_mask[chosen] = false
+                for pos in group
+                    up_mask[pos] = false
+                end
+            end
+        end
+    end
+
+    # Same for down spins
+    for group in similar_down
+        if length(group) > 1
+            pool = [down_mask[pos] for pos in group]
+            if all(!, pool)
+                continue
+            end
+            available_group = group[pool]
+            chosen = rand(rng, available_group)
+            if !isempty(remaining_down)
+                kappa_down[chosen] = pop!(remaining_down)
+            end
+            for pos in group
+                down_mask[pos] = false
+
+            end
+        end
+    end
+
+    # Fill remaining positions randomly
+    available_up = findall(up_mask)
+    available_down = findall(down_mask)
+
+    # Randomly assign remaining up spins
+    while !isempty(remaining_up) && !isempty(available_up)
+        pos = rand(rng, available_up)
+        kappa_up[pos] = pop!(remaining_up)
+        deleteat!(available_up, findfirst(==(pos), available_up))
+        if pos in available_down
+            deleteat!(available_down, findfirst(==(pos), available_down))
+        end
+    end
+    # Randomly assign remaining down spins
+    while !isempty(remaining_down) && !isempty(available_down)
+        pos = rand(rng, available_down)
+        kappa_down[pos] = pop!(remaining_down)
+        deleteat!(available_down, findfirst(==(pos), available_down))
     end
 
     return kappa_up, kappa_down
@@ -133,23 +287,29 @@ Generate configurations with non-zero determinants for both up and down states.
 # Returns
 - `kappa_up`, `kappa_down`: Valid configurations with non-zero determinants
 """
-function ensure_nonzero_det(rng, Ham, ns, N_up; max_attempts = 100)
+function ensure_nonzero_det(
+    rng::AbstractRNG,
+    Ham::AbstractHamiltonian,
+    ns::Int,
+    N_up::Int;
+    max_attempts = 100,
+)
     attempts = 0
-    kappa_up, kappa_down = init_conf(rng, ns, N_up)
+    kappa_up, kappa_down = better_init_conf(rng, ns, N_up, Ham)
+    det_tol = max(10.0^(-ns), eps(Float64))
 
     while attempts < max_attempts
         tiled_U_up = tiled_U(Ham.U_up, kappa_up)
         tiled_U_down = tiled_U(Ham.U_down, kappa_down)
 
-        if abs(det(tiled_U_up)) > 1e-14 && abs(det(tiled_U_down)) > 1e-14
+        if abs(det(tiled_U_up)) > det_tol && abs(det(tiled_U_down)) > det_tol
             return kappa_up, kappa_down
         end
 
         # @warn "det(tiled_U_up) = $(det(tiled_U_up)), det(tiled_U_down) = $(det(tiled_U_down))"
-        kappa_up, kappa_down = init_conf(rng, ns, N_up)
+        kappa_up, kappa_down = better_init_conf(rng, ns, N_up, Ham)
         attempts += 1
     end
-
     error("Failed to find valid configuration after $max_attempts attempts")
 end
 
@@ -168,7 +328,7 @@ function MC(params::AbstractDict)
     Ham = Hamiltonian(N_up, N_down, lat)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
-    kappa_up, kappa_down = ensure_nonzero_det(rng, Ham, ns, N_up, max_attempts = 10000000)
+    kappa_up, kappa_down = ensure_nonzero_det(rng, Ham, ns, N_up, max_attempts = 100)
     U_upinvs = tiled_U(Ham.U_up, kappa_up) \ I
     U_downinvs = tiled_U(Ham.U_down, kappa_down) \ I
     # calculate W_up and W_down
@@ -209,10 +369,9 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    ctx.thermalization_sweeps = 0
-    mc.kappa_up, mc.kappa_down = ensure_nonzero_det(ctx.rng, mc.Ham, ns, N_up)
+    # mc.kappa_up, mc.kappa_down = ensure_nonzero_det(ctx.rng, mc.Ham, ns, N_up)
     # calculate W_up and W_down
-    reevaluateW!(mc)
+    # reevaluateW!(mc)
 end
 
 function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector)
@@ -264,14 +423,6 @@ matrices, a warning is issued and the simulation continues.
 @inline function Carlo.sweep!(mc::MC, ctx::MCContext)
     # MCMC scheme for Mott state
     # Electrons swap between different spins at occupied sites
-    if !is_thermalized(ctx)
-        det_up = det(tiled_U(mc.Ham.U_up, mc.kappa_up))
-        det_down = det(tiled_U(mc.Ham.U_down, mc.kappa_down))
-        if abs(det_up) > 1e-14 || abs(det_down) > 1e-14
-            ctx.thermalization_sweeps = -1
-            @show "thermalized"
-        end
-    end
 
     nn = mc.Ham.nn
 
