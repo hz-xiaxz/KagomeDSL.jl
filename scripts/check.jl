@@ -43,12 +43,9 @@ for i = first_num:(ns÷2)
     end
 end
 # if exists, delete it
-if isfile(KagomeDSL.debug_path * "xprime.jld2")
-    rm(KagomeDSL.debug_path * "xprime.jld2")
-end
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "check$(tm.n1)x$(tm.n2)OBC"
+savepath = dir * "/../data/" * "check$(tm.n1)x$(tm.n2)PBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
@@ -56,9 +53,9 @@ job = JobInfo(
     checkpoint_time = "30:00",
     run_time = "24:00:00",
 )
-Carlo.start(job, ARGS)
+# Carlo.start(job, ARGS)
 
-# Carlo.cli_delete(job, Dict())
-# with_logger(Carlo.default_logger()) do
-#     start(Carlo.SingleScheduler, job)
-# end
+Carlo.cli_delete(job, Dict())
+with_logger(Carlo.default_logger()) do
+    start(Carlo.SingleScheduler, job)
+end

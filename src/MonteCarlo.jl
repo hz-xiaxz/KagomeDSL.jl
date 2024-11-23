@@ -8,6 +8,11 @@ mutable struct MC <: AbstractMC
     W_down::AbstractMatrix
 end
 
+function Carlo.is_thermalized(ctx::MCContext)
+    # Hack
+    return ctx.thermalization_sweeps == -1
+end
+
 function reevaluateW!(mc::MC)
     # Calculate inverse matrices
     tiled_U_up = tiled_U(mc.Ham.U_up, mc.kappa_up)
@@ -19,7 +24,6 @@ function reevaluateW!(mc::MC)
             if e isa LinearAlgebra.SingularException
                 @warn "lu factorization failed, aborting re-evaluation..."
                 @show tiled_U_up
-                throw(e)
             end
         end
         try
@@ -28,7 +32,6 @@ function reevaluateW!(mc::MC)
             if e isa LinearAlgebra.SingularException
                 @warn "lu factorization failed, aborting re-evaluation..."
                 @show tiled_U_down
-                throw(e)
             end
         end
 
@@ -138,11 +141,11 @@ function ensure_nonzero_det(rng, Ham, ns, N_up; max_attempts = 100)
         tiled_U_up = tiled_U(Ham.U_up, kappa_up)
         tiled_U_down = tiled_U(Ham.U_down, kappa_down)
 
-        if !(det(tiled_U_up) ≈ 1e-10 || det(tiled_U_down) ≈ 1e-10)
+        if abs(det(tiled_U_up)) > 1e-14 && abs(det(tiled_U_down)) > 1e-14
             return kappa_up, kappa_down
         end
 
-        @warn "det(tiled_U_up) = $(det(tiled_U_up)), det(tiled_U_down) = $(det(tiled_U_down))"
+        # @warn "det(tiled_U_up) = $(det(tiled_U_up)), det(tiled_U_down) = $(det(tiled_U_down))"
         kappa_up, kappa_down = init_conf(rng, ns, N_up)
         attempts += 1
     end
@@ -165,7 +168,7 @@ function MC(params::AbstractDict)
     Ham = Hamiltonian(N_up, N_down, lat)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
-    kappa_up, kappa_down = ensure_nonzero_det(rng, Ham, ns, N_up)
+    kappa_up, kappa_down = ensure_nonzero_det(rng, Ham, ns, N_up, max_attempts = 10000000)
     U_upinvs = tiled_U(Ham.U_up, kappa_up) \ I
     U_downinvs = tiled_U(Ham.U_down, kappa_down) \ I
     # calculate W_up and W_down
@@ -206,6 +209,7 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
+    ctx.thermalization_sweeps = 0
     mc.kappa_up, mc.kappa_down = ensure_nonzero_det(ctx.rng, mc.Ham, ns, N_up)
     # calculate W_up and W_down
     reevaluateW!(mc)
@@ -260,6 +264,15 @@ matrices, a warning is issued and the simulation continues.
 @inline function Carlo.sweep!(mc::MC, ctx::MCContext)
     # MCMC scheme for Mott state
     # Electrons swap between different spins at occupied sites
+    if !is_thermalized(ctx)
+        det_up = det(tiled_U(mc.Ham.U_up, mc.kappa_up))
+        det_down = det(tiled_U(mc.Ham.U_down, mc.kappa_down))
+        if abs(det_up) > 1e-14 || abs(det_down) > 1e-14
+            ctx.thermalization_sweeps = -1
+            @show "thermalized"
+        end
+    end
+
     nn = mc.Ham.nn
 
     # calculate the number of neighbor states Z_{\mu}
@@ -326,6 +339,7 @@ matrices, a warning is issued and the simulation continues.
 
     return nothing
 end
+
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
