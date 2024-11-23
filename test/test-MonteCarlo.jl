@@ -100,7 +100,7 @@ end
     end
 end
 
-@testset "tiled_U tests" begin
+@testset "tilde_U tests" begin
     @testset "Basic functionality" begin
         # Create a simple test matrix
         U = [
@@ -110,7 +110,7 @@ end
         ]
         kappa = [2, 3, 1]
 
-        result = tiled_U(U, kappa)
+        result = tilde_U(U, kappa)
 
         # Test output dimensions
         @test size(result) == (3, 3)
@@ -128,7 +128,7 @@ end
         ]
         kappa = [0, 0]
 
-        @test_throws ArgumentError tiled_U(U, kappa)
+        @test_throws ArgumentError tilde_U(U, kappa)
     end
 
     @testset "Different matrix shapes" begin
@@ -140,7 +140,7 @@ end
         ]
         kappa = [1, 0, 2]
 
-        result = tiled_U(U, kappa)
+        result = tilde_U(U, kappa)
 
         @test size(result) == (2, 2)
         @test result[1, :] == U[1, :]
@@ -154,7 +154,7 @@ end
         ]
         kappa = [2, 1]
 
-        result = tiled_U(U, kappa)
+        result = tilde_U(U, kappa)
 
         @test result[1, :] == U[2, :]
         @test result[2, :] == U[1, :]
@@ -164,13 +164,13 @@ end
         # Empty matrix
         U = Matrix{Float64}(undef, 0, 0)
         kappa = Int[]
-        result = tiled_U(U, kappa)
+        result = tilde_U(U, kappa)
         @test size(result) == (0, 0)
 
         # Single element
         U = reshape([1.0], 1, 1)
         kappa = [1]
-        result = tiled_U(U, kappa)
+        result = tilde_U(U, kappa)
         @test result == U
     end
 
@@ -183,7 +183,7 @@ end
         kappa = [1, 2]
         kappa_original = copy(kappa)
 
-        result = tiled_U(U, kappa)
+        result = tilde_U(U, kappa)
 
         # Test that inputs weren't modified
         @test U == U_original
@@ -197,10 +197,10 @@ end
         ]
 
         # Test kappa with invalid indices
-        @test_throws BoundsError tiled_U(U, [3, 1])  # Index 3 is out of bounds
+        @test_throws BoundsError tilde_U(U, [3, 1])  # Index 3 is out of bounds
 
         # Test mismatched dimensions
-        @test_throws DimensionMismatch tiled_U(U, [1, 2, 3])
+        @test_throws DimensionMismatch tilde_U(U, [1, 2, 3])
     end
 
     @testset "Type stability" begin
@@ -211,12 +211,12 @@ end
         kappa = [1, 2]
 
         # Test that output type matches input type
-        result = tiled_U(U, kappa)
+        result = tilde_U(U, kappa)
         @test eltype(result) == eltype(U)
 
         # Test with different types
         U_int = [1 2; 3 4]
-        result_int = tiled_U(U_int, kappa)
+        result_int = tilde_U(U_int, kappa)
         @test eltype(result_int) == eltype(U_int)
     end
 end
