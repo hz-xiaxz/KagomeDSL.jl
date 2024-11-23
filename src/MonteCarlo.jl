@@ -296,7 +296,7 @@ function ensure_nonzero_det(
 )
     attempts = 0
     kappa_up, kappa_down = better_init_conf(rng, ns, N_up, Ham)
-    det_tol = max(10.0^(-ns), eps(Float64))
+    det_tol = min(10.0^(-ns), eps(Float64))
 
     while attempts < max_attempts
         tiled_U_up = tiled_U(Ham.U_up, kappa_up)
