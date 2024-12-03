@@ -1,4 +1,3 @@
-abstract type AbstractHamiltonian end
 # fluxed transition rule defined in the paper
 # (i, j) i is the initial state, j is the final state
 # in-cell transitions, needs index1 mod 6 == index2 mod 6
@@ -120,18 +119,17 @@ end
 
 # temporarily separate the N_up and N_down subspaces
 function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
+    search_num = max(N_up, N_down)
     # get sampling ensemble U_up and U_down
-    S = schur(H_mat)
+    decomp, history =
+        ArnoldiMethod.partialschur(H_mat, nev = search_num, tol = 1e-14, which = :SR)
     # select N lowest eigenvectors as the sampling ensemble
-    unsorted_eig = S.values
-    sorted_index = sortperm(unsorted_eig)
-    U = S.vectors[:, sorted_index]
-    U_up = U[:, 1:N_up]
-    U_down = U[:, 1:N_down]
+    U_up = decomp.Q[:, 1:N_up]
+    U_down = decomp.Q[:, 1:N_down]
     return U_up, U_down
 end
 
-struct Hamiltonian <: AbstractHamiltonian
+struct Hamiltonian
     N_up::Int
     N_down::Int
     U_up::Matrix{Float64}
@@ -268,8 +266,6 @@ function spinInteraction!(
     # Case 1: S+_i S-_j
     # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
     if is_occupied(kappa_up, j) && is_occupied(kappa_down, i)
-        # i, j are the original labels, in the {R_l} set
-        # kappa[i], kappa[j] bookkeep the order inside tilde U, which is in the {l} set
         K_up = i    # i gets the up spin
         K_down = j  # j gets the down spin
         l_up = kappa_up[j]   # take the up index from j
@@ -332,8 +328,7 @@ The Hamiltonian should be the real one!
             # Gutzwiller(conf) == 0.0 && continue
             update_up = mc.W_up[conf[1], conf[2]]
             update_down = mc.W_down[conf[3], conf[4]]
-            element = coff * update_up * update_down
-            OL += element
+            OL += coff * update_up * update_down
         end
     end
     return OL
