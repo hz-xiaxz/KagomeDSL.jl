@@ -14,4 +14,3 @@ _research/
 data/
 notebook/
 scripts/debug_job.jl
-scripts/check.jl

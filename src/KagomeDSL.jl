@@ -9,9 +9,9 @@ using ArnoldiMethod
 export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice, ns
 include("Lattice.jl")
 
-export orbitals, Hamiltonian, fast_update, Sz, spinInteraction!, AbstractHamiltonian
+export orbitals, Hamiltonian, fast_update, Sz, spinInteraction!
 include("Hamiltonian.jl")
 
-export MC, MCContext, tilde_U, better_init_conf, find_similar_rows
+export MC, MCContext, tilde_U
 include("MonteCarlo.jl")
 end
