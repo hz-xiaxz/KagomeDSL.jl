@@ -220,3 +220,13 @@ end
         @test eltype(result_int) == eltype(U_int)
     end
 end
+
+@testset "Z function tests" begin
+    # Test Néel state configuration
+    # Sites: 0-1-2 in a line, each connected to neighbors
+    nn = [CartesianIndex(1, 2), CartesianIndex(2, 3), CartesianIndex(1, 3)]  # nearest neighbor bonds
+    kappa_up = [0, 1, 0]   # up spins at sites 0,2
+    kappa_down = [1, 0, 2] # down spins at sites 1
+
+    @test KagomeDSL.Z(nn, kappa_up, kappa_down) == 2
+end
