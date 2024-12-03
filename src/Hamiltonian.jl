@@ -4,12 +4,11 @@ abstract type AbstractHamiltonian end
 # in-cell transitions, needs index1 mod 6 == index2 mod 6
 function bondNum(s1::Int, s2::Int)
     first_cell_num = (s1 - 1) ÷ 6
-    label_s1 = (s1 - 1) % 6
-    # if label_s1 <0 add 6 until it is positive
-    while label_s1 < 0
-        label_s1 += 6
+    if s1 <= 0 && mod(s1 - 1, 6) != 0
+        first_cell_num -= 1
     end
-    new_s1 = label_s1 + 1
+
+    new_s1 = mod(s1 - 1, 6) + 1
     new_s2 = s2 - 6 * first_cell_num
     return (new_s1, new_s2)
 end
@@ -21,24 +20,99 @@ function setTunnel!(
     PBCs1::Int,
     PBCs2::Int,
     link::Dict,
+    sign::Float64 = 1.0,
 )
     bond_num = bondNum(PBCs1, PBCs2)
     if haskey(link, bond_num)
-        # a bit hacky `=`
-        Tunneling[s1, s2] = link[bond_num] * 1.0
+        Tunneling[s1, s2] = link[bond_num] * sign
     end
 
     bond_num2 = bondNum(PBCs2, PBCs1)
     if haskey(link, bond_num2)
-        Tunneling[s2, s1] = 1.0 * link[bond_num2]
+        Tunneling[s2, s1] = link[bond_num2] * sign
+    end
+end
+
+function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int, n1::Int, ns::Int)
+    PBC1, PBC2 = lat.PBC
+    anti1, anti2 = lat.antiPBC
+
+    # No shifts for open boundary conditions
+    if lat.PBC == (false, false)
+        return [(s1, s2, 1.0)]
+    end
+
+    shifts = Tuple{Int,Int,Float64}[]
+
+    # Handle PBC in first direction
+    if PBC1
+        base_shifts = [0, -3n1, 3n1]
+        for shift in base_shifts
+            sign = (anti1 && (shift != 0)) ? -1.0 : 1.0
+            push!(shifts, (s1 + shift, s2, sign))
+        end
+    end
+
+    # Handle PBC in second direction
+    if PBC2
+        base_shifts = [0, -3ns, 3ns]
+        for shift in base_shifts
+            sign = (anti2 && (shift != 0)) ? -1.0 : 1.0
+            push!(shifts, (s1, s2 + shift, sign))
+        end
+    end
+
+    # Handle both directions if both are periodic
+    if PBC1 && PBC2
+        for shift1 in [-3n1, 0, 3n1]
+            for shift2 in [-3ns, 0, 3ns]
+                sign = 1.0
+                if anti1 && (shift1 != 0)
+                    sign *= -1.0
+                end
+                if anti2 && (shift2 != 0)
+                    sign *= -1.0
+                end
+                push!(shifts, (s1 + shift1, s2 + shift2, sign))
+            end
+        end
+    end
+
+    return unique(shifts)
+end
+
+function apply_boundary_conditions!(
+    tunneling::AbstractMatrix,
+    lat::AbstractLattice,
+    s1::Int,
+    s2::Int,
+    n1::Int,
+    ns::Int,
+    link_in::Dict,
+    link_inter::Dict,
+)
+    # Handle in-cell cases
+    if (s1 - 1) ÷ 6 == (s2 - 1) ÷ 6
+        setTunnel!(tunneling, s1, s2, s1, s2, link_in)
+        return
+    end
+
+    # Handle inter-cell cases
+    shifts = get_boundary_shifts(lat, s1, s2, n1, ns)
+    # first check if s1 and s2 are linked, then do the boundary condition
+    for (PBCs1, PBCs2, sign) in shifts
+        if haskey(link_inter, bondNum(PBCs1, PBCs2))
+            setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter, sign)
+        end
     end
 end
 
 """
-    Hmat(lat::AbstractLattice, χ::Float64, N_up::Int, N_down::Int)
+    Hmat(lat::DoubleKagome) -> Matrix{Float64}
+
+Return the Spinor Hamiltonian matrix for a DoubleKagome lattice.
 """
 function Hmat(lat::DoubleKagome)
-
     n1 = lat.n1
     n2 = lat.n2
     ns = n1 * n2 * 3
@@ -78,41 +152,7 @@ function Hmat(lat::DoubleKagome)
 
     for bond in lat.nn
         s1, s2 = Tuple(bond)
-        # consider in-cell cases
-        if (s1 - 1) ÷ 6 == (s2 - 1) ÷ 6
-            setTunnel!(tunneling, s1, s2, s1, s2, link_in)
-        end
-        # consider inter-cell cases
-        # consider PBC
-
-        # start from OBC
-
-        if (s1 - 1) ÷ 6 != (s2 - 1) ÷ 6
-            if lat.PBC == (false, false)
-                setTunnel!(tunneling, s1, s2, s1, s2, link_inter)
-
-            elseif lat.PBC == (true, false)
-                for PBCs1 in (s1 - 3n1, s1 + 3n1, s1)
-                    for PBCs2 in (s2 - 3n1, s2 + 3n1, s2)
-                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter)
-                    end
-                end
-
-            elseif lat.PBC == (false, true)
-                for PBCs1 in (s1 - 3ns, s1 + 3ns, s1)
-                    for PBCs2 in (s2 - 3ns, s2 + 3ns, s2)
-                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter)
-                    end
-                end
-
-            elseif lat.PBC == (true, true)
-                for PBCs1 in (s1 - 3n1, s1 + 3n1, s1 - 3ns, s1 + 3ns, s1)
-                    for PBCs2 in (s1 - 3n1, s1 + 3n1, s2 - 3ns, s2 + 3ns, s2)
-                        setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter)
-                    end
-                end
-            end
-        end
+        apply_boundary_conditions!(tunneling, lat, s1, s2, n1, ns, link_in, link_inter)
     end
     return -tunneling
     # Seems like the sign of tunneling is opposite to the one in the paper

@@ -277,3 +277,64 @@ end
         @inferred spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
     end
 end
+
+@testset "DoubleKagome Boundary Conditions" begin
+    @testset "get_boundary_shifts" begin
+        n1, n2 = 4, 3  # n1 must be even for DoubleKagome
+        ns = n1 * n2 * 3
+        lat = DoubleKagome(1.0, n1, n2, (true, true); antiPBC = (true, false))
+        tunneling = zeros(Float64, ns, ns)
+
+        # Example link dictionaries
+        link_in = Dict((1, 2) => 1.0, (2, 1) => 1.0)
+
+        link_inter = Dict((1, -1) => 1.0, (-1, 1) => 1.0)
+
+        # Test in-cell tunneling (should not be affected by antiperiodic BC)
+        s1, s2 = 1, 2
+        apply_boundary_conditions!(tunneling, lat, s1, s2, n1, ns, link_in, link_inter)
+        @test tunneling[s1, s2] ≈ 1.0
+        @test tunneling[s2, s1] ≈ 1.0
+
+        # Test inter-cell tunneling with antiperiodic BC
+        tunneling = zeros(Float64, ns, ns)
+        s1, s2 = 1, 4
+        apply_boundary_conditions!(tunneling, lat, s1, s2, n1, ns, link_in, link_inter)
+
+        # Check if crossing boundary in first direction gives negative sign
+        boundary_cross = abs(s1 - s2) > 3n1
+        expected_sign = boundary_cross ? -1.0 : 1.0
+        if haskey(link_inter, bondNum(s1, s2))
+            @test tunneling[s1, s2] ≈ expected_sign * link_inter[bondNum(s1, s2)]
+        end
+    end
+end
+
+@testset "bondNum Function" begin
+    # Test cases for positive indices
+    @testset "Positive Indices" begin
+        @test bondNum(1, 7) == (1, 7)
+        @test bondNum(6, 12) == (6, 12)
+        @test bondNum(7, 13) == (1, 7)
+        @test bondNum(12, 18) == (6, 12)
+        @test bondNum(13, 19) == (1, 7)
+    end
+
+    # Test cases for negative indices
+    @testset "Negative Indices" begin
+        @test bondNum(-1, 1) == (5, 7)
+        @test bondNum(1, -1) == (1, -1)
+        @test bondNum(-6, 0) == (6, 12)
+        @test bondNum(-7, -1) == (5, 11)
+        @test bondNum(-12, -6) == (6, 12)
+        @test bondNum(-13, -7) == (5, 11)
+    end
+
+    # Test cases for edge cases
+    @testset "Edge Cases" begin
+        @test bondNum(0, 6) == (6, 12)
+        @test bondNum(-1, 0) == (5, 6)
+        @test bondNum(1, 0) == (1, 0)
+        @test bondNum(6, 0) == (6, 0)
+    end
+end
