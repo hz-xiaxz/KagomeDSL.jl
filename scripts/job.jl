@@ -7,11 +7,11 @@ using LinearAlgebra
 using ArnoldiMethod
 
 tm = TaskMaker()
-tm.thermalization = 100_0
-tm.sweeps = 100_0
-tm.binsize = 1
-tm.n1 = 12
-tm.n2 = 12
+tm.thermalization = 5000
+tm.sweeps = 200000
+tm.binsize = 100
+tm.n1 = 8
+tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, false)
 
@@ -46,7 +46,7 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "mpi$(tm.n1)x$(tm.n2)PBC"
+savepath = dir * "/../data/" * "rightspectrum-mpi$(tm.n1)x$(tm.n2)PBC"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
