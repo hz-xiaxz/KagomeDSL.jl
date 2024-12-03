@@ -27,9 +27,6 @@ function reevaluateW!(mc::MC)
                 @show tilde_U_down
             end
         end
-
-        mc.W_up = mc.Ham.U_up * U_upinvs
-        mc.W_down = mc.Ham.U_down * U_downinvs
     end
     # Calculate W matrices using matrix multiplication
     mc.W_up = mc.Ham.U_up * U_upinvs
@@ -176,16 +173,37 @@ Initialize the Monte Carlo object
     reevaluateW!(mc)
 end
 
-function getNeigh(rng, ns::Int, nn::AbstractArray)
-    while true
-        i = rand(rng, 1:ns)
-        neigh = filter(x -> x[1] == i, nn)
-        if length(neigh) == 0
-            continue
-        else
-            site = sample(rng, neigh)[2]
-            return i, site
+function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector)
+    # iterate over all possible moves
+    # if two sites connected by a bond, check if they are occupied by different spins
+    count = 0
+    for bond in nn
+        site1 = bond[1]
+        site2 = bond[2]
+        if is_occupied(kappa_up, site1) && is_occupied(kappa_down, site2)
+            count += 1
+        elseif is_occupied(kappa_up, site2) && is_occupied(kappa_down, site1)
+            count += 1
         end
+    end
+    return count
+end
+
+function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_down::Int)
+    if flag == 1
+        # Update W matrices
+        mc.W_up = update_W(mc.W_up; l = l_up, K = site)
+        mc.W_down = update_W(mc.W_down; l = l_down, K = i)
+        # Update kappa configurations
+        mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
+        mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
+    else
+        # Update W matrices
+        mc.W_up = update_W(mc.W_up; l = l_up, K = i)
+        mc.W_down = update_W(mc.W_down; l = l_down, K = site)
+        # Update kappa configurations
+        mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
+        mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
     end
 end
 
@@ -195,33 +213,6 @@ end
 Perform one Monte Carlo sweep for the Mott state simulation. This implements
 a two-spin swap update where electrons can exchange positions between different
 spin states at occupied sites.
-
-Algorithm:
-1. Randomly select two neighboring sites (i, site)
-2. Check if a valid swap is possible (both sites must be occupied by different spins)
-3. Calculate acceptance ratio based on determinant ratios
-4. Accept/reject the move using Metropolis criterion
-5. If accepted, update the W matrices and kappa configurations
-6. Periodically re-evaluate W matrices to maintain numerical stability
-
-Parameters:
-- `mc::MC`: Monte Carlo state containing:
-  * `kappa_up`, `kappa_down`: Occupation configurations for up/down spins
-  * `W_up`, `W_down`: Green's function matrices
-  * `Ham`: Hamiltonian object
-  * `nn`: Nearest neighbor list
-- `ctx::MCContext`: Monte Carlo context containing:
-  * Random number generator
-  * Sweep counter
-  * Measurement accumulators
-
-Updates:
-- Modifies `mc.kappa_up`, `mc.kappa_down`: Spin configurations
-- Modifies `mc.W_up`, `mc.W_down`: Green's function matrices
-- Records acceptance rate in `ctx`
-
-Returns:
-- `nothing`
 
 Note:
 The W matrices are re-evaluated periodically (every n_occupied sweeps) to
@@ -233,9 +224,18 @@ matrices, a warning is issued and the simulation continues.
     # Electrons swap between different spins at occupied sites
     nn = mc.Ham.nn
     ns = length(mc.kappa_up)
-
+    # calculate the number of neighbor states Z_{\mu}
+    Zmu = Z(nn, mc.kappa_up, mc.kappa_down)
+    Zmax = length(nn)
+    r = rand(ctx.rng)
+    if r > Zmu / Zmax
+        measure!(ctx, :acc, 0.0)
+        return nothing
+    end
     # Randomly select neighboring sites
-    i, site = getNeigh(ctx.rng, ns, nn)
+    bond = sample(ctx.rng, nn)
+    i = bond[1]
+    site = bond[2]
     ratio = 0
 
     # Check possible updates: can swap if both sites are occupied by different spins
@@ -262,31 +262,14 @@ matrices, a warning is issued and the simulation continues.
     else
         mc.W_up[i, l_up] * mc.W_down[site, l_down]
     end
-
-    # Metropolis acceptance step
-    if ratio^2 < 1.0 && rand(ctx.rng) > ratio^2
-        measure!(ctx, :acc, 0.0)
-    else
-        # Update configurations and W matrices
-        if flag == 1
-            # Update W matrices
-            mc.W_up = update_W(mc.W_up; l = l_up, K = site)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = i)
-
-            # Update kappa configurations
-            mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
-            mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
-        else
-            # Update W matrices
-            mc.W_up = update_W(mc.W_up; l = l_up, K = i)
-            mc.W_down = update_W(mc.W_down; l = l_down, K = site)
-
-            # Update kappa configurations
-            mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
-            mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
-        end
-
+    if ratio^2 >= 1 && r < Zmu / Zmax
+        update_configurations!(mc, flag, i, site, l_up, l_down)
         measure!(ctx, :acc, 1.0)
+    elseif ratio^2 < 1 && r < (Zmu / Zmax) * ratio^2
+        update_configurations!(mc, flag, i, site, l_up, l_down)
+        measure!(ctx, :acc, 1.0)
+    else
+        measure!(ctx, :acc, 0.0)
     end
 
     # Re-evaluate W matrices periodically

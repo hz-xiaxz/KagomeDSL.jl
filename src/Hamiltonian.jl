@@ -266,6 +266,8 @@ function spinInteraction!(
     # Case 1: S+_i S-_j
     # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
     if is_occupied(kappa_up, j) && is_occupied(kappa_down, i)
+        # i, j are the original labels, in the {R_l} set
+        # kappa[i], kappa[j] bookkeep the order inside tilde U, which is in the {l} set
         K_up = i    # i gets the up spin
         K_down = j  # j gets the down spin
         l_up = kappa_up[j]   # take the up index from j
