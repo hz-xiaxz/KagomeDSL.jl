@@ -3,7 +3,7 @@
 # in-cell transitions, needs index1 mod 6 == index2 mod 6
 
 function unitcell_coord(s::Int, n1::Int, n2::Int)
-    @assert s >= 1 && s <= n1 * n2 * 6 "s should be in the range of 1 to n1 * n2 * 6, got: $s"
+    @assert s >= 1 && s <= n1 * n2 * 6 "s should be in the range of 1 to ns, got: $s"
     unitcell_num = (s - 1) ÷ 6
     a1 = [4.0, 0.0]
     a2 = [1.0, sqrt(3.0)]
@@ -24,8 +24,8 @@ function unitcell_diff(unitcell_coord1::Vector{Float64}, unitcell_coord2::Vector
     # [x] = [4.0 1.0  ]^-1 [diff[1]]
     # [y]   [0.0 √3.0 ]    [diff[2]]
 
-    dx = (sqrt(3.0) * diff[1] - diff[2]) / (4.0 * sqrt(3.0))
-    dy = diff[2] / sqrt(3.0)
+    dx = round(Int, (sqrt(3.0) * diff[1] - diff[2]) / (4.0 * sqrt(3.0)))
+    dy = round(Int, diff[2] / sqrt(3.0))
     return dx, dy
 end
 
@@ -72,7 +72,17 @@ function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
 
         push!(shifts, (dx + shift1, dy + shift2, sign))
     end
-
+    # Check for inconsistent signs for same dx,dy pairs
+    seen = Dict{Tuple{Int,Int},Float64}()
+    for (dx, dy, sign) in shifts
+        if haskey(seen, (dx, dy))
+            if seen[(dx, dy)] != sign
+                @warn "Inconsistent signs found for displacement ($dx,$dy)"
+            end
+        else
+            seen[(dx, dy)] = sign
+        end
+    end
     return unique(shifts)
 end
 

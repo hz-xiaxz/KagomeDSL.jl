@@ -1,5 +1,5 @@
 using Random
-
+using KagomeDSL
 @testset "Hamiltonian" begin
     DK = DoubleKagome(1.0, 4, 3, (false, false))
     H = KagomeDSL.Hmat(DK)
@@ -277,6 +277,110 @@ end
         @inferred spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
     end
 end
+@testset "apply_boundary_conditions!" begin
+    @testset "Basic boundary conditions" begin
+        n1, n2 = 4, 3  # n1 must be even for DoubleKagome
+        ns = n1 * n2 * 6  # 6 sites per unit cell
+
+        # Define test cases with different boundary conditions
+        test_cases = [
+            (
+                "PBC in both directions",
+                (true, true),
+                (false, false),
+                Dict((1, 5, -1, 0) => 1.0, (5, 1, 1, 0) => 1.0),
+                [(1, 11, 1.0), (11, 1, 1.0)],  # (s1, s2, expected_value)
+            ),
+            (
+                "Anti-PBC in x direction",
+                (true, true),
+                (true, false),
+                Dict((1, 5, -1, 0) => 1.0, (5, 1, 1, 0) => 1.0),
+                [(1, 11, -1.0), (11, 1, -1.0)],
+            ),
+            (
+                "Anti-PBC in y direction",
+                (true, true),
+                (false, true),
+                Dict((3, 6, 0, -1) => 1.0, (6, 3, 0, 1) => 1.0),
+                [(3, 3 * 2 * n1 + 6, -1.0), (3 * 2 * n1 + 6, 3, -1.0)],
+            ),
+        ]
+
+        for (name, PBC, antiPBC, link_inter, tests) in test_cases
+            @testset "$name" begin
+                lat = DoubleKagome(1.0, n1, n2, PBC; antiPBC = antiPBC)
+
+                for (s1, s2, expected) in tests
+                    tunneling = zeros(Float64, ns, ns)
+                    apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+                    @test tunneling[s1, s2] ≈ expected
+                end
+            end
+        end
+    end
+
+    @testset "Multiple bonds and crossings" begin
+        n1, n2 = 4, 3
+        ns = n1 * n2 * 3
+        lat = DoubleKagome(1.0, n1, n2, (true, true); antiPBC = (true, true))
+
+        # Test diagonal crossings
+        link_inter = Dict((1, 6, -1, -1) => 1.0)
+        tunneling = zeros(Float64, ns, ns)
+        s1, s2 = 1, ns
+        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+        @test tunneling[s1, s2] ≈ 1.0  # Signs cancel for diagonal crossing
+    end
+
+    @testset "Edge cases" begin
+        n1, n2 = 4, 3
+        ns = n1 * n2 * 3
+        lat = DoubleKagome(1.0, n1, n2, (true, true); antiPBC = (true, true))
+
+
+        # Test non-existent bonds
+        link_inter = Dict((1, 5, 1, 0) => 1.0)
+        tunneling = zeros(Float64, ns, ns)
+        s1, s2 = 1, 7  # Sites that don't have a defined bond
+        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+        @test tunneling[s1, s2] ≈ 0.0  # No bond should be added
+    end
+
+    @testset "Error handling" begin
+        n1, n2 = 4, 3
+        ns = n1 * n2 * 3
+        lat = DoubleKagome(1.0, n1, n2, (true, true))
+        tunneling = zeros(Float64, ns, ns)
+        link_inter = Dict((1, 5, -1, 0) => 1.0)
+
+        # Test same cell error
+        s1, s2 = 1, 2  # Same unit cell
+        @test_throws AssertionError apply_boundary_conditions!(
+            tunneling,
+            lat,
+            s1,
+            s2,
+            link_inter,
+        )
+
+        # Test invalid site indices
+        @test_throws AssertionError apply_boundary_conditions!(
+            tunneling,
+            lat,
+            0,
+            1,
+            link_inter,
+        )
+        @test_throws AssertionError apply_boundary_conditions!(
+            tunneling,
+            lat,
+            1,
+            ns + 1,
+            link_inter,
+        )
+    end
+end
 
 @testset "DoubleKagome Boundary Conditions" begin
     @testset "get_boundary_shifts" begin
@@ -301,6 +405,142 @@ end
         expected_sign = boundary_cross ? -1.0 : 1.0
         if haskey(link_inter, (1, 5, -1, 0))
             @test tunneling[s1, s2] ≈ expected_sign * link_inter[(1, 5, -1, 0)]
+        end
+    end
+end
+
+@testset "unitcell_coord" begin
+    n1, n2 = 3, 2  # Small lattice for testing
+
+    # Test first unit cell (sites 1-6)
+    @test KagomeDSL.unitcell_coord(1, n1, n2) ≈ [0.0, 0.0]
+    @test KagomeDSL.unitcell_coord(6, n1, n2) ≈ [0.0, 0.0]
+
+    # Test middle unit cell
+    middle_cell = 2  # second cell in first row
+    @test KagomeDSL.unitcell_coord(6 * middle_cell - 5, n1, n2) ≈ [4.0, 0.0]
+
+    # Test last unit cell
+    last_site = n1 * n2 * 6
+    expected_last = [(n1 - 1) * 4.0 + (n2 - 1) * 1.0, (n2 - 1) * sqrt(3.0)]
+    @test KagomeDSL.unitcell_coord(last_site, n1, n2) ≈ expected_last
+    # Test row transitions
+    # Last cell in first row
+    @test KagomeDSL.unitcell_coord(6 * n1, n1, n2) ≈ [(n1 - 1) * 4.0, 0.0]
+    # First cell in second row
+    @test KagomeDSL.unitcell_coord(6 * n1 + 1, n1, n2) ≈ [1.0, sqrt(3.0)]
+
+    # Test error cases
+    @test_throws AssertionError KagomeDSL.unitcell_coord(0, n1, n2)
+    @test_throws AssertionError KagomeDSL.unitcell_coord(n1 * n2 * 6 + 1, n1, n2)
+
+    # Test coordinate system
+    # Check x-direction spacing
+    x1 = KagomeDSL.unitcell_coord(1, n1, n2)[1]
+    x2 = KagomeDSL.unitcell_coord(7, n1, n2)[1]  # Next cell in x-direction
+    @test x2 - x1 ≈ 4.0
+
+    # Check y-direction spacing
+    y1 = KagomeDSL.unitcell_coord(1, n1, n2)[2]
+    y2 = KagomeDSL.unitcell_coord(6 * n1 + 1, n1, n2)[2]  # Next cell in y-direction
+    @test y2 - y1 ≈ sqrt(3.0)
+end
+
+@testset "unitcell_diff with integer rounding" begin
+    # Define basis vectors
+    a1 = [4.0, 0.0]
+    a2 = [1.0, sqrt(3.0)]
+
+    # Test exact unit translations
+    @testset "Exact unit translations" begin
+        # One unit in a1 direction
+        dx, dy = KagomeDSL.unitcell_diff(a1, [0.0, 0.0])
+        @test dx == 1
+        @test dy == 0
+
+        # One unit in a2 direction
+        dx, dy = KagomeDSL.unitcell_diff(a2, [0.0, 0.0])
+        @test dx == 0
+        @test dy == 1
+
+        # One unit in each direction
+        dx, dy = KagomeDSL.unitcell_diff(a1 + a2, [0.0, 0.0])
+        @test dx == 1
+        @test dy == 1
+    end
+
+    # Test rounding behavior
+    @testset "Rounding behavior" begin
+        # Slightly perturbed coordinates should round to same integers
+        for ε in [-0.1, 0.1]
+            # Near one unit in a1
+            dx, dy = KagomeDSL.unitcell_diff(a1 + [ε, ε], [0.0, 0.0])
+            @test dx == 1
+            @test dy == 0
+
+            # Near one unit in a2
+            dx, dy = KagomeDSL.unitcell_diff(a2 + [ε, ε], [0.0, 0.0])
+            @test dx == 0
+            @test dy == 1
+        end
+    end
+
+    # Test negative translations
+    @testset "Negative translations" begin
+        dx, dy = KagomeDSL.unitcell_diff([0.0, 0.0], a1)
+        @test dx == -1
+        @test dy == 0
+
+        dx, dy = KagomeDSL.unitcell_diff([0.0, 0.0], a2)
+        @test dx == 0
+        @test dy == -1
+    end
+
+    # Test multiple unit cells
+    @testset "Multiple unit cells" begin
+        # Two units in a1
+        dx, dy = KagomeDSL.unitcell_diff(2 * a1, [0.0, 0.0])
+        @test dx == 2
+        @test dy == 0
+
+        # Two units in a2
+        dx, dy = KagomeDSL.unitcell_diff(2 * a2, [0.0, 0.0])
+        @test dx == 0
+        @test dy == 2
+
+        # Diagonal: two units in each direction
+        dx, dy = KagomeDSL.unitcell_diff(2 * a1 + 2 * a2, [0.0, 0.0])
+        @test dx == 2
+        @test dy == 2
+    end
+
+    # Test zero difference
+    @testset "Zero difference" begin
+        dx, dy = KagomeDSL.unitcell_diff([0.0, 0.0], [0.0, 0.0])
+        @test dx == 0
+        @test dy == 0
+
+        # Small perturbations should still give zero
+        dx, dy = KagomeDSL.unitcell_diff([0.1, 0.1], [0.0, 0.0])
+        @test dx == 0
+        @test dy == 0
+    end
+
+    # Test with actual lattice coordinates
+    @testset "Lattice coordinates" begin
+        # Define some typical lattice positions
+        positions = [
+            ([0.0, 0.0], [4.0, 0.0], -1, 0),    # One unit left
+            ([4.0, 0.0], [0.0, 0.0], 1, 0),     # One unit right
+            ([0.0, 0.0], [1.0, sqrt(3.0)], 0, -1), # One unit down
+            ([1.0, sqrt(3.0)], [0.0, 0.0], 0, 1),  # One unit up
+            ([5.0, sqrt(3.0)], [0.0, 0.0], 1, 1),  # Diagonal
+        ]
+
+        for (coord1, coord2, expected_dx, expected_dy) in positions
+            dx, dy = KagomeDSL.unitcell_diff(coord1, coord2)
+            @test dx == expected_dx
+            @test dy == expected_dy
         end
     end
 end
