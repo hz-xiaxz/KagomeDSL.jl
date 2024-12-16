@@ -31,7 +31,7 @@ end
 
 
 function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
-
+    @assert s1 != s2 "s1 and s2 should not be the same, got: $s1 and $s2"
     PBC1, PBC2 = lat.PBC
     anti1, anti2 = lat.antiPBC
     # get unit cell coordinate

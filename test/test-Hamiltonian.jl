@@ -544,3 +544,100 @@ end
         end
     end
 end
+
+@testset "get_boundary_shifts" begin
+    @testset "Basic functionality" begin
+        n1, n2 = 4, 3  # n1 must be even for DoubleKagome
+        lat = DoubleKagome(1.0, n1, n2, (true, true))
+
+        # Test same position (should never happen in practice due to assertions)
+        s1, s2 = 3, 3
+        @test_throws AssertionError get_boundary_shifts(lat, s1, s2)
+
+        # Test nearest neighbor in same row
+        s1, s2 = 3, 9  # Sites in adjacent cells
+        shifts = get_boundary_shifts(lat, s1, s2)
+        @test (1, 0, 1.0) in shifts
+
+        # Test periodic wrapping in x direction
+        s1, s2 = 3, 6 * (n1 ÷ 2 - 1) + 3  # First and last cell in row
+        shifts = get_boundary_shifts(lat, s1, s2)
+        @test (-(n1 ÷ 2 - 1), 0, 1.0) in shifts
+        @test (n1 ÷ 2 + 1, 0, 1.0) in shifts
+    end
+
+    @testset "Boundary conditions" begin
+        n1, n2 = 4, 3
+
+        # Test with no PBC
+        lat_no_pbc = DoubleKagome(1.0, n1, n2, (false, false))
+        s1, s2 = 3, 9
+        shifts = get_boundary_shifts(lat_no_pbc, s1, s2)
+        @test length(shifts) == 1  # Only direct connection
+        @test shifts == [(1, 0, 1.0)]
+
+        # Test with PBC in x only
+        lat_pbc_x = DoubleKagome(1.0, n1, n2, (true, false))
+        shifts = get_boundary_shifts(lat_pbc_x, s1, s2)
+        @test length(shifts) > 1  # Should include periodic images in x
+        @test all(s[2] == 0 for s in shifts)  # No y-shifts
+
+        # Test with anti-PBC in x
+        lat_anti_x = DoubleKagome(1.0, n1, n2, (true, false); antiPBC = (true, false))
+        s1, s2 = 3, 6 * (n1 ÷ 2 - 1) + 3  # First and last cell in row
+        shifts = get_boundary_shifts(lat_anti_x, s1, s2)
+        @test any(s[3] == -1.0 for s in shifts)  # Should have negative signs
+    end
+
+    @testset "Edge cases and errors" begin
+        n1, n2 = 4, 3
+        lat = DoubleKagome(1.0, n1, n2, (true, true))
+
+        # Test out of range indices
+        @test_throws AssertionError get_boundary_shifts(lat, 0, 1)
+        @test_throws AssertionError get_boundary_shifts(lat, 1, n1 * n2 * 6 + 1)
+
+        # Test diagonal shifts
+        s1, s2 = 3, 6 * n1 ÷ 2 + 9  # Diagonal neighbor
+        shifts = get_boundary_shifts(lat, s1, s2)
+        @test any(s[1] != 0 && s[2] != 0 for s in shifts)  # Should have diagonal shifts
+    end
+
+    @testset "Sign consistency" begin
+        n1, n2 = 4, 3
+        lat = DoubleKagome(1.0, n1, n2, (true, true); antiPBC = (true, true))
+
+        # Test sign consistency for equivalent paths
+        s1, s2 = 3, 6 * n1 ÷ 2 + 9
+        shifts = get_boundary_shifts(lat, s1, s2)
+
+        # Group shifts by displacement
+        by_displacement = Dict{Tuple{Int,Int},Vector{Float64}}()
+        for (dx, dy, sign) in shifts
+            if !haskey(by_displacement, (dx, dy))
+                by_displacement[(dx, dy)] = Float64[]
+            end
+            push!(by_displacement[(dx, dy)], sign)
+        end
+
+        # Check that all signs are consistent for each displacement
+        for (_, signs) in by_displacement
+            @test length(unique(signs)) == 1  # All signs should be the same
+        end
+    end
+
+    @testset "Doubled unit cell handling" begin
+        n1, n2 = 4, 3
+        lat = DoubleKagome(1.0, n1, n2, (true, true))
+
+        # Test that shifts account for doubled unit cell
+        s1, s2 = 3, 9  # Adjacent cells
+        shifts = get_boundary_shifts(lat, s1, s2)
+        @test (1, 0, 1.0) in shifts  # Direct connection
+
+        # Test wrapping with doubled unit cell
+        s1, s2 = 3, 6 * (n1 ÷ 2 - 1) + 3  # First and last cell
+        shifts = get_boundary_shifts(lat, s1, s2)
+        @test any(abs(s[1]) == n1 ÷ 2 + 1 for s in shifts)  # Should use halved n1
+    end
+end
