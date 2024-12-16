@@ -1,4 +1,4 @@
-using LinearAlgebra
+using LinearAlgebra: triu
 
 abstract type AbstractLattice end
 
@@ -17,6 +17,7 @@ struct Kagome <: AbstractLattice
     r::Array{Array{Float64,1},1}
 
     PBC::Tuple{Bool,Bool}
+    antiPBC::Tuple{Bool,Bool}
     distance_matrix::Array{Float64,2}
     nn::Array{CartesianIndex{2},1}
 end
@@ -172,7 +173,29 @@ create_distance_matrix(
     trunc::Float64 = Inf,
 ) = create_distance_matrix(n1, n2, a1, a2, r, (PBC, PBC); trunc = trunc)
 
-function Kagome(t::Float64, n1::Int, n2::Int, PBC::Tuple{Bool,Bool}; trunc::Float64 = Inf)
+function validate_boundary_conditions(PBC::Tuple{Bool,Bool}, antiPBC::Tuple{Bool,Bool})
+    for (i, (pbc, apbc)) in enumerate(zip(PBC, antiPBC))
+        if apbc && !pbc
+            dir = i == 1 ? "first" : "second"
+            throw(
+                ArgumentError(
+                    "Invalid boundary conditions in $dir direction: " *
+                    "Cannot have antiperiodic boundary conditions without periodic boundary conditions",
+                ),
+            )
+        end
+    end
+end
+
+function Kagome(
+    t::Float64,
+    n1::Int,
+    n2::Int,
+    PBC::Tuple{Bool,Bool};
+    antiPBC::Tuple{Bool,Bool} = (false, false),
+    trunc::Float64 = Inf,
+)
+    validate_boundary_conditions(PBC, antiPBC)
     a = 2 * t
     a1 = [a, 0.0]
     a2 = [a * 0.5, a * sqrt(3) * 0.5]
@@ -188,11 +211,9 @@ function Kagome(t::Float64, n1::Int, n2::Int, PBC::Tuple{Bool,Bool}; trunc::Floa
     # extract all the indices of the minimum distance elements
     nn = findall(x -> x ≈ t, triu(distance_matrix))
 
-    return Kagome(n1, n2, t, a1, a2, r, PBC, distance_matrix, nn)
+    return Kagome(n1, n2, t, a1, a2, r, PBC, antiPBC, distance_matrix, nn)
 end
 
-Kagome(t::Float64, n1::Int, n2::Int, PBC::Bool; trunc::Float64 = Inf) =
-    Kagome(t, n1, n2, (PBC, PBC); trunc = trunc)
 
 struct DoubleKagome <: AbstractLattice
     # number of repititions in directions of a1 and a2
@@ -207,6 +228,7 @@ struct DoubleKagome <: AbstractLattice
     r::Array{Array{Float64,1},1}
 
     PBC::Tuple{Bool,Bool}
+    antiPBC::Tuple{Bool,Bool}
     distance_matrix::Array{Float64,2}
     nn::Array{CartesianIndex{2},1}
 end
@@ -221,8 +243,10 @@ function DoubleKagome(
     n1::Int,
     n2::Int,
     PBC::Tuple{Bool,Bool};
+    antiPBC::Tuple{Bool,Bool} = (false, false),
     trunc::Float64 = Inf,
 )
+    validate_boundary_conditions(PBC, antiPBC)
     @assert n1 % 2 == 0
     a = 2t
     a1 = [2a, 0.0]
@@ -242,11 +266,8 @@ function DoubleKagome(
     tri_distance_matrix = triu(distance_matrix)
     # extract all the indices of the minimum distance elements
     nn = findall(x -> x ≈ t, tri_distance_matrix)
-    return DoubleKagome(n1, n2, t, a1, a2, r, PBC, distance_matrix, nn)
+    return DoubleKagome(n1, n2, t, a1, a2, r, PBC, antiPBC, distance_matrix, nn)
 end
-
-DoubleKagome(t::Float64, n1::Int, n2::Int, PBC::Bool; trunc::Float64 = Inf) =
-    DoubleKagome(t, n1, n2, (PBC, PBC); trunc = trunc)
 
 
 ns(lat::AbstractLattice) = lat.n1 * lat.n2 * 3

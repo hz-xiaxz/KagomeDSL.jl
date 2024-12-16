@@ -6,7 +6,14 @@ using Carlo
 using HDF5
 using ArnoldiMethod
 
-export Kagome, DoubleKagome, nearestNeighbor, AbstractLattice, ns
+export Kagome,
+    DoubleKagome,
+    nearestNeighbor,
+    AbstractLattice,
+    ns,
+    get_boundary_shifts,
+    apply_boundary_conditions!,
+    bondNum
 include("Lattice.jl")
 
 export orbitals, Hamiltonian, fast_update, Sz, spinInteraction!
