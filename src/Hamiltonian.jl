@@ -1,80 +1,76 @@
 # fluxed transition rule defined in the paper
 # (i, j) i is the initial state, j is the final state
 # in-cell transitions, needs index1 mod 6 == index2 mod 6
-function bondNum(s1::Int, s2::Int)
-    first_cell_num = (s1 - 1) ÷ 6
-    if s1 <= 0 && mod(s1 - 1, 6) != 0
-        first_cell_num -= 1
-    end
 
-    new_s1 = mod(s1 - 1, 6) + 1
-    new_s2 = s2 - 6 * first_cell_num
-    return (new_s1, new_s2)
+function unitcell_coord(s::Int, n1::Int, n2::Int)
+    @assert s >= 1 && s <= n1 * n2 * 6 "s should be in the range of 1 to n1 * n2 * 6, got: $s"
+    unitcell_num = (s - 1) ÷ 6
+    a1 = [4.0, 0.0]
+    a2 = [1.0, sqrt(3.0)]
+    unitcell_coord = (unitcell_num % n1) * a1 + (unitcell_num ÷ n1) * a2
+    return unitcell_coord
 end
 
-function setTunnel!(
-    Tunneling::AbstractMatrix,
-    s1::Int,
-    s2::Int,
-    PBCs1::Int,
-    PBCs2::Int,
-    link::Dict,
-    sign::Float64 = 1.0,
-)
-    bond_num = bondNum(PBCs1, PBCs2)
-    if haskey(link, bond_num)
-        Tunneling[s1, s2] = link[bond_num] * sign
-    end
+function unitcell_diff(unitcell_coord1::Vector{Float64}, unitcell_coord2::Vector{Float64})
+    diff = unitcell_coord1 - unitcell_coord2
+    # projects onto a1 and a2
+    a1 = [4.0, 0.0]
+    a2 = [1.0, sqrt(3.0)]
+    # Solve x*a1 + y*a2 = diff
+    # [4.0 1.0  ] [x] = [diff[1]]
+    # [0.0 √3.0 ] [y]   [diff[2]]
 
-    bond_num2 = bondNum(PBCs2, PBCs1)
-    if haskey(link, bond_num2)
-        Tunneling[s2, s1] = link[bond_num2] * sign
-    end
+    # Solve using matrix inversion:
+    # [x] = [4.0 1.0  ]^-1 [diff[1]]
+    # [y]   [0.0 √3.0 ]    [diff[2]]
+
+    dx = (sqrt(3.0) * diff[1] - diff[2]) / (4.0 * sqrt(3.0))
+    dy = diff[2] / sqrt(3.0)
+    return dx, dy
 end
 
-function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int, n1::Int, ns::Int)
+
+function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
+
     PBC1, PBC2 = lat.PBC
     anti1, anti2 = lat.antiPBC
+    # get unit cell coordinate
+
+    n1 = lat.n1 ÷ 2
+    n2 = lat.n2
+    ns = n1 * n2 * 6
+    @assert s1 >= 1 && s1 <= ns "s1 should be in the range of 1 to ns, got: $s1 in $ns"
+    @assert s2 >= 1 && s2 <= ns "s2 should be in the range of 1 to ns, got: $s2 in $ns"
+    u1 = unitcell_coord(s1, n1, n2)
+    u2 = unitcell_coord(s2, n1, n2)
+    dx, dy = unitcell_diff(u2, u1)
 
     # No shifts for open boundary conditions
     if lat.PBC == (false, false)
-        return [(s1, s2, 1.0)]
+        return [(dx, dy, 1.0)]
     end
 
-    shifts = Tuple{Int,Int,Float64}[]
-
+    shifts = [(dx, dy, 1.0)]
     # Handle PBC in first direction
-    if PBC1
-        base_shifts = [0, -3n1, 3n1]
-        for shift in base_shifts
-            sign = (anti1 && (shift != 0)) ? -1.0 : 1.0
-            push!(shifts, (s1 + shift, s2, sign))
-        end
-    end
+    # Define shift ranges based on boundary conditions
+    shifts_x = PBC1 ? [-n1, 0, n1] : [0]
+    shifts_y = PBC2 ? [-n2, 0, n2] : [0]
 
-    # Handle PBC in second direction
-    if PBC2
-        base_shifts = [0, -3ns, 3ns]
-        for shift in base_shifts
-            sign = (anti2 && (shift != 0)) ? -1.0 : 1.0
-            push!(shifts, (s1, s2 + shift, sign))
-        end
-    end
+    # Generate all combinations of shifts
+    for shift1 in shifts_x, shift2 in shifts_y
+        # Skip the no-shift case if it's already included
+        (shift1 == 0 && shift2 == 0 && !isempty(shifts)) && continue
 
-    # Handle both directions if both are periodic
-    if PBC1 && PBC2
-        for shift1 in [-3n1, 0, 3n1]
-            for shift2 in [-3ns, 0, 3ns]
-                sign = 1.0
-                if anti1 && (shift1 != 0)
-                    sign *= -1.0
-                end
-                if anti2 && (shift2 != 0)
-                    sign *= -1.0
-                end
-                push!(shifts, (s1 + shift1, s2 + shift2, sign))
-            end
+        # Calculate sign based on boundary crossings
+        sign = 1.0
+        if anti1 && shift1 != 0
+            sign *= -1.0
         end
+        if anti2 && shift2 != 0
+            sign *= -1.0
+        end
+
+        push!(shifts, (dx + shift1, dy + shift2, sign))
     end
 
     return unique(shifts)
@@ -85,23 +81,19 @@ function apply_boundary_conditions!(
     lat::AbstractLattice,
     s1::Int,
     s2::Int,
-    n1::Int,
-    ns::Int,
-    link_in::Dict,
     link_inter::Dict,
 )
+    cell1 = (s1 - 1) ÷ 6 + 1
+    cell2 = (s2 - 1) ÷ 6 + 1
     # Handle in-cell cases
-    if (s1 - 1) ÷ 6 == (s2 - 1) ÷ 6
-        setTunnel!(tunneling, s1, s2, s1, s2, link_in)
-        return
-    end
-
-    # Handle inter-cell cases
-    shifts = get_boundary_shifts(lat, s1, s2, n1, ns)
-    # first check if s1 and s2 are linked, then do the boundary condition
-    for (PBCs1, PBCs2, sign) in shifts
-        if haskey(link_inter, bondNum(PBCs1, PBCs2))
-            setTunnel!(tunneling, s1, s2, PBCs1, PBCs2, link_inter, sign)
+    @assert cell1 != cell2 "s1 and s2 should not be in the same cell, got: $cell1 and $cell2"
+    label1 = (s1 - 1) % 6 + 1
+    label2 = (s2 - 1) % 6 + 1
+    shifts = get_boundary_shifts(lat, s1, s2)
+    # check if the bond is linked
+    for (dx, dy, sign) in shifts
+        if haskey(link_inter, (label1, label2, dx, dy))
+            tunneling[s1, s2] += sign * link_inter[(label1, label2, dx, dy)]
         end
     end
 end
@@ -134,26 +126,53 @@ function Hmat(lat::DoubleKagome)
         (5, 4) => 1,
         (6, 5) => 1,
     )
-
-    # maybe more elegent to modify bondNum function
+    # (lable1, label2, dx, dy)
     link_inter = Dict(
-        (3, 3n1 + 1) => -1,
-        (3, 3n1 - 1) => -1,
-        (6, 3n1 + 2) => -1,
-        (6, 3n1 + 4) => 1,
-        (5, 7) => 1,
-        (1, -1) => 1,
-        (1, 3 - 3n1) => -1,
-        (2, 6 - 3n1) => -1,
-        (4, 6 - 3n1) => 1,
-        (5, 9 - 3n1) => -1,
+        (3, 5, -1, 1) => -1,
+        (3, 1, 0, 1) => -1,
+        (6, 2, 0, 1) => -1,
+        (6, 4, 0, 1) => 1,
+        (5, 1, 1, 0) => 1,
+        (1, 5, -1, 0) => 1,
+        (1, 3, 0, -1) => -1,
+        (2, 6, 0, -1) => -1,
+        (4, 6, 0, -1) => 1,
+        (5, 3, 1, -1) => -1,
     )
 
-    for bond in lat.nn
-        s1, s2 = Tuple(bond)
-        apply_boundary_conditions!(tunneling, lat, s1, s2, n1, ns, link_in, link_inter)
+    for cell1 = 1:(n1*n2÷2)
+        sites1 = (cell1-1)*6+1:cell1*6
+        for s1 in sites1, s2 in sites1
+            s1 >= s2 && continue
+            # s1 and s2 are in the same cell, so we only need to check link_in
+            label1 = (s1 - 1) % 6 + 1
+            label2 = (s2 - 1) % 6 + 1
+            if haskey(link_in, (label1, label2))
+                tunneling[s1, s2] = link_in[(label1, label2)]
+            end
+        end
     end
-    return -tunneling
+    for cell1 = 1:(n1*n2÷2)
+        sites1 = (cell1-1)*6+1:cell1*6
+        for cell2 = 1:(n1*n2÷2)
+            sites2 = (cell2-1)*6+1:cell2*6
+            cell1 == cell2 && continue
+            for s1 in sites1, s2 in sites2
+                s1 >= s2 && continue
+                apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+            end
+        end
+    end
+    # careful!
+    # verify tunneling matrix is upper triangular
+    for i in axes(tunneling, 1)
+        for j = 1:i-1
+            if !iszero(tunneling[i, j])
+                error("tunneling matrix must be upper triangular")
+            end
+        end
+    end
+    return -(tunneling + tunneling')
     # Seems like the sign of tunneling is opposite to the one in the paper
 end
 
