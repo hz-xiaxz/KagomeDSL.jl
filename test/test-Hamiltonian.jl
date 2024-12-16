@@ -26,9 +26,60 @@ using KagomeDSL
     @test H2[1, 11] == -1 # horizontal PBC
     @test H2[1, 3*4+1] == 0 # vertical OBC
 
-    # other boundaries should be tested
+    # Anti-periodic boundary condition tests
+    @testset "Anti-periodic boundary conditions" begin
+        # Test anti-PBC in x direction
+        DK_antiX = DoubleKagome(1.0, 4, 3, (true, false); antiPBC = (true, false))
+        H_antiX = KagomeDSL.Hmat(DK_antiX)
+        @test H_antiX ≈ H_antiX'  # Check Hermiticity
+        @test H_antiX[1, 2] == -1  # Normal in-cell bond
+        @test H_antiX[1, 3] == -1  # Normal in-cell bond
+        @test H_antiX[5, 7] == -1   # Normal inter-cell bond
+        @test H_antiX[1, 11] == 1 # Boundary crossing with anti-PBC in x
 
+        # Test anti-PBC in y direction
+        DK_antiY = DoubleKagome(1.0, 4, 3, (true, true); antiPBC = (false, true))
+        H_antiY = KagomeDSL.Hmat(DK_antiY)
+        @test H_antiY ≈ H_antiY'  # Check Hermiticity
+        @test H_antiY[1, 11] == -1   # Normal horizontal bond
+        @test H_antiY[1, 3+4*6] == -1  # Vertical bond with anti-PBC
+
+        # Test anti-PBC in both directions
+        DK_antiBoth = DoubleKagome(1.0, 4, 3, (true, true); antiPBC = (true, true))
+        H_antiBoth = KagomeDSL.Hmat(DK_antiBoth)
+        @test H_antiBoth ≈ H_antiBoth'  # Check Hermiticity
+        @test H_antiBoth[1, 11] == 1  # x-direction anti-PBC
+        @test H_antiBoth[1, 27] == -1  # y-direction anti-PBC
+        @test H_antiBoth[11, 27] == 1  # Double crossing should give positive sign
+
+        # Test mixed boundary conditions
+        DK_mixed = DoubleKagome(1.0, 4, 3, (true, true); antiPBC = (true, false))
+        H_mixed = KagomeDSL.Hmat(DK_mixed)
+        @test H_mixed ≈ H_mixed'  # Check Hermiticity
+        @test H_mixed[1, 11] == 1  # x-direction anti-PBC
+        @test H_mixed[1, 3+4*6] == 1  # y-direction normal PBC
+    end
+
+    # Test error cases
+    @testset "Error cases" begin
+        # Test invalid anti-PBC configuration
+        @test_throws ArgumentError DoubleKagome(
+            1.0,
+            4,
+            3,
+            (false, false);
+            antiPBC = (true, false),
+        )
+        @test_throws ArgumentError DoubleKagome(
+            1.0,
+            4,
+            3,
+            (false, false);
+            antiPBC = (false, true),
+        )
+    end
 end
+
 
 @testset "orbitals" begin
     DK2 = DoubleKagome(1.0, 4, 3, (true, false))
