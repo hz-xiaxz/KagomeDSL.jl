@@ -230,3 +230,52 @@ end
 
     @test KagomeDSL.Z(nn, kappa_up, kappa_down) == 2
 end
+
+@testset "reevaluateW! tests" begin
+    @testset "Basic functionality" begin
+        # Create a simple 2x2 test case
+        U_up = [1.0 0.2; 0.2 1.0]
+        U_down = [1.0 0.3; 0.3 1.0]
+        ham = Hamiltonian(1, 1, U_up, U_down, zeros(4, 4), [])
+        kappa_up = [1, 2]
+        kappa_down = [2, 1]
+        mc = MC(ham, kappa_up, kappa_down, zeros(2, 2), zeros(2, 2))
+
+        KagomeDSL.reevaluateW!(mc)
+
+        tilde_U_up = tilde_U(U_up, kappa_up)
+        tilde_U_down = tilde_U(U_down, kappa_down)
+        U_upinvs = tilde_U_up \ I
+        U_downinvs = tilde_U_down \ I
+        W_up_expected = U_up * U_upinvs
+        W_down_expected = U_down * U_downinvs
+
+        @test isapprox(mc.W_up, W_up_expected, atol = 1e-10)
+        @test isapprox(mc.W_down, W_down_expected, atol = 1e-10)
+    end
+
+    @testset "Matrix properties" begin
+        # Test with larger matrices
+        n = 4
+        U_up = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
+        U_down = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
+        U_up = (U_up + U_up') / 2  # Make symmetric
+        U_down = (U_down + U_down') / 2
+
+        ham = Hamiltonian(2, 2, U_up, U_down, zeros(16, 16), [])
+        kappa_up = [1, 2, 3, 4]
+        kappa_down = [4, 3, 2, 1]
+        mc = MC(ham, kappa_up, kappa_down, zeros(n, n), zeros(n, n))
+
+        KagomeDSL.reevaluateW!(mc)
+
+        # Test matrix dimensions
+        @test size(mc.W_up) == (n, n)
+        @test size(mc.W_down) == (n, n)
+
+        # Test symmetry preservation
+        @test isapprox(mc.W_up, mc.W_up', atol = 1e-10)
+        @test isapprox(mc.W_down, mc.W_down', atol = 1e-10)
+    end
+
+end
