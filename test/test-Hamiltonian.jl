@@ -122,7 +122,7 @@ end
     l_down = 1
     conf = (k_up, l_up, k_down, l_down)
     @test conf in keys(xprime)
-    @test xprime[conf] == 1 / 2 * 2
+    @test xprime[conf] == -1 / 2 * 2
     # x2 is flip 1 up, flip 3 down
     k_up_3 = 3
     l_up_3 = 1
@@ -130,7 +130,7 @@ end
     l_down_3 = 2
     conf_3 = (k_up_3, l_up_3, k_down_3, l_down_3)
     @test conf_3 in keys(xprime)
-    @test xprime[conf_3] == 1 / 2 * 2
+    @test xprime[conf_3] == -1 / 2 * 2
 end
 
 @testset "getOL" begin
@@ -243,13 +243,13 @@ end
         # Test S+_i S-_j: site 2(↓) -> site 1(↑)
         spinInteraction!(xprime, kappa_up, kappa_down, 2, 1)
         @test haskey(xprime, (2, 1, 1, 1))  # new configuration
-        @test xprime[(2, 1, 1, 1)] ≈ 0.5    # coefficient should be 1/2
+        @test xprime[(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
 
         # Test S-_i S+_j: site 1(↑) -> site 2(↓)
         xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
         @test haskey(xprime, (2, 1, 1, 1))  # new configuration
-        @test xprime[(2, 1, 1, 1)] ≈ 0.5    # coefficient should be 1/2
+        @test xprime[(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
     end
 
     @testset "No action cases" begin
@@ -263,7 +263,7 @@ end
 
         spinInteraction!(xprime, kappa_up, kappa_down, 2, 3)
         @test !isempty(xprime)
-        @test xprime[(2, 2, 3, 1)] == 0.5
+        @test xprime[(2, 2, 3, 1)] == -0.5
     end
 
     @testset "Multiple interactions" begin
@@ -274,7 +274,7 @@ end
         # Apply same interaction twice
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
-        @test xprime[(2, 1, 1, 1)] ≈ 1.0  # coefficients should add
+        @test xprime[(2, 1, 1, 1)] ≈ -1.0  # coefficients should add
     end
 
     @testset "Edge cases" begin
@@ -303,7 +303,7 @@ end
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
 
         @test haskey(xprime, (2, 1, 1, 1))
-        @test xprime[(2, 1, 1, 1)] ≈ 0.5
+        @test xprime[(2, 1, 1, 1)] ≈ -0.5
     end
 
     @testset "Accumulation behavior" begin
@@ -316,7 +316,7 @@ end
 
         # Apply interaction
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
-        @test xprime[(2, 1, 1, 1)] ≈ 0.75  # 0.25 + 0.5
+        @test xprime[(2, 1, 1, 1)] ≈ -0.25  # 0.25 - 0.5
     end
 
     @testset "Type stability" begin

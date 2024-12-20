@@ -10,24 +10,8 @@ function reevaluateW!(mc::MC)
     # Calculate inverse matrices
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-    let U_upinvs = nothing, U_downinvs = nothing
-        try
-            U_upinvs = tilde_U_up \ I
-        catch e
-            if e isa LinearAlgebra.SingularException
-                @warn "lu factorization failed, aborting re-evaluation..."
-                @show tilde_U_up
-            end
-        end
-        try
-            U_downinvs = tilde_U_down \ I
-        catch e
-            if e isa LinearAlgebra.SingularException
-                @warn "lu factorization failed, aborting re-evaluation..."
-                @show tilde_U_down
-            end
-        end
-    end
+    U_upinvs = tilde_U_up \ I
+    U_downinvs = tilde_U_down \ I
     # Calculate W matrices using matrix multiplication
     mc.W_up = mc.Ham.U_up * U_upinvs
     mc.W_down = mc.Ham.U_down * U_downinvs
@@ -294,7 +278,7 @@ end
         let OL = nothing
             function try_measure()
                 OL = getOL(mc, mc.kappa_up, mc.kappa_down)
-                measure!(ctx, :OL, OL)
+                measure!(ctx, :OL, OL / 2)
                 return true
             end
 

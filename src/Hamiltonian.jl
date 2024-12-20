@@ -342,7 +342,7 @@ function spinInteraction!(
         l_up = kappa_up[j]   # take the up index from j
         l_down = kappa_down[i]  # take the down index from i
         new_conf = (K_up, l_up, K_down, l_down)
-        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 1.0 / 2.0
+        xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
     # Case 2: S-_i S+_j
@@ -353,7 +353,7 @@ function spinInteraction!(
         l_up = kappa_up[i]   # take the up index from i
         l_down = kappa_down[j]  # take the down index from j
         new_conf = (K_up, l_up, K_down, l_down)
-        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 1.0 / 2.0
+        xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
     return nothing
