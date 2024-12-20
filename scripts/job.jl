@@ -9,14 +9,15 @@ using ArnoldiMethod
 tm = TaskMaker()
 tm.thermalization = 5000
 tm.sweeps = 200000
-tm.binsize = 100
+tm.binsize = 10
 tm.n1 = 8
 tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
-tm.PBC = (true, false)
+tm.PBC = (true, true)
+tm.antiPBC = (true, false)
 
 # pre check shell
-lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC)
+lat = DoubleKagome(1.0, tm.n1, tm.n2, tm.PBC; antiPBC = tm.antiPBC)
 H = KagomeDSL.Hmat(lat)
 decomp, history = partialschur(H, nev = size(H, 1), tol = 1e-16, which = :SR)
 E = decomp.eigenvalues
@@ -39,14 +40,14 @@ for i = first_num:(ns÷2)
         shell_pool,
     )
     if isempty(shell)
-        task(tm; N_up = i, N_down = ns - i)
     end
 end
 
+task(tm; N_up = ns ÷ 2, N_down = ns ÷ 2)
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "rightspectrum-mpi$(tm.n1)x$(tm.n2)PBC"
+savepath = dir * "/../data/" * "sign-$(tm.n1)x$(tm.n2)"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
