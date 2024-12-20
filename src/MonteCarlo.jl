@@ -10,24 +10,8 @@ function reevaluateW!(mc::MC)
     # Calculate inverse matrices
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-    let U_upinvs = nothing, U_downinvs = nothing
-        try
-            U_upinvs = tilde_U_up \ I
-        catch e
-            if e isa LinearAlgebra.SingularException
-                @warn "lu factorization failed, aborting re-evaluation..."
-                @show tilde_U_up
-            end
-        end
-        try
-            U_downinvs = tilde_U_down \ I
-        catch e
-            if e isa LinearAlgebra.SingularException
-                @warn "lu factorization failed, aborting re-evaluation..."
-                @show tilde_U_down
-            end
-        end
-    end
+    U_upinvs = tilde_U_up \ I
+    U_downinvs = tilde_U_down \ I
     # Calculate W matrices using matrix multiplication
     mc.W_up = mc.Ham.U_up * U_upinvs
     mc.W_down = mc.Ham.U_down * U_downinvs
@@ -291,34 +275,8 @@ end
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
-        let OL = nothing
-            function try_measure()
-                OL = getOL(mc, mc.kappa_up, mc.kappa_down)
-                measure!(ctx, :OL, OL)
-                return true
-            end
-
-            # First attempt
-            try
-                return try_measure()
-            catch e
-                if e isa LinearAlgebra.SingularException
-                    @warn "First lu factorization failed, attempting recovery..."
-                    # Recovery attempt
-                    reevaluateW!(mc)
-                    try
-                        return try_measure()
-                    catch e2
-                        if e2 isa LinearAlgebra.SingularException
-                            @warn "Recovery failed: lu factorization failed twice"
-                            return false
-                        end
-                        rethrow(e2)  # Rethrow non-singular exceptions
-                    end
-                end
-                rethrow(e)  # Rethrow non-singular exceptions
-            end
-        end
+        OL = getOL(mc, mc.kappa_up, mc.kappa_down)
+        measure!(ctx, :OL, OL / 2)
     end
 end
 
