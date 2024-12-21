@@ -205,44 +205,16 @@ struct Hamiltonian
     U_down::Matrix{Float64}
     H_mat::Matrix{Float64}
     nn::AbstractArray
+    Hmat::Matrix{Float64}
 end
 
 function Hamiltonian(N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
     H_mat = Hmat(lat)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = lat.nn
-    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
+    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn, H_mat)
 end
 
-
-# """
-#     Splus(i::Int, x::BitStr{N,T}) where {N,T}
-# ``S+ = f^†_{↑} f_{↓}``
-# """
-# function Splus(i::Int, x::BitStr{N,T}) where {N,T}
-#     L = length(x) ÷ 2
-#     if readbit(x, i) == 0 && readbit(x, i + L) == 1
-#         _x = x
-#         _x &= ~indicator(T, i + L)
-#         _x |= indicator(T, i)
-#         return _x, 1.0
-#     else
-#         return x, 0.0
-#     end
-# end
-
-# """
-#     Sminus(i::Int, x::BitStr{N,T}) where {N,T}
-# ``S- = f^†_{↓} f_{↑}``
-# """
-# function Sminus(i::Int, x::BitStr{N,T}) where {N,T}
-#     L = length(x) ÷ 2
-#     if readbit(x, i) == 1 && readbit(x, i + L) == 0
-#         return _x, 1.0
-#     else
-#         return x, 0.0
-#     end
-# end
 
 """
     Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int}) -> Float64
@@ -301,23 +273,27 @@ function SzInteraction!(
     kappa_down::Vector{Int},
     i::Int,
     j::Int,
+    sign::Float64,
 )
     xprime[(-1, -1, -1, -1)] =
         get!(xprime, (-1, -1, -1, -1), 0.0) +
-        Sz(i, kappa_up, kappa_down) * Sz(j, kappa_up, kappa_down)
+        Sz(i, kappa_up, kappa_down) * Sz(j, kappa_up, kappa_down) * sign
     return nothing
 end
+
+SzInteraction!(
+    xprime::Dict,
+    kappa_up::Vector{Int},
+    kappa_down::Vector{Int},
+    i::Int,
+    j::Int,
+) = SzInteraction!(xprime, kappa_up, kappa_down, i, j, 1.0)
 
 """
     spinInteraction!(xprime::Dict, kappa_up::Vector{Int}, kappa_down::Vector{Int}, i::Int, j::Int)
 
 Compute the spin flip term 1/2(S+_i S-_j + S-_i S+_j) contribution to xprime.
 
-Parameters:
-- `xprime`: Dictionary to store the new configurations and their coefficients
-- `kappa_up`: Configuration of up spins
-- `kappa_down`: Configuration of down spins
-- `i`, `j`: Sites where the spin interaction operates
 
 The function handles two cases:
 1. S+_i S-_j: when j has up spin and i has down spin
@@ -331,6 +307,7 @@ function spinInteraction!(
     kappa_down::Vector{Int},
     i::Int,
     j::Int,
+    sign::Float64,
 )
     # Case 1: S+_i S-_j
     # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
@@ -342,7 +319,7 @@ function spinInteraction!(
         l_up = kappa_up[j]   # take the up index from j
         l_down = kappa_down[i]  # take the down index from i
         new_conf = (K_up, l_up, K_down, l_down)
-        xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
+        xprime[new_conf] = get!(xprime, new_conf, 0.0) - sign * 1.0 / 2.0
     end
 
     # Case 2: S-_i S+_j
@@ -353,11 +330,19 @@ function spinInteraction!(
         l_up = kappa_up[i]   # take the up index from i
         l_down = kappa_down[j]  # take the down index from j
         new_conf = (K_up, l_up, K_down, l_down)
-        xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
+        xprime[new_conf] = get!(xprime, new_conf, 0.0) - sign * 1.0 / 2.0
     end
 
     return nothing
 end
+
+spinInteraction!(
+    xprime::Dict,
+    kappa_up::Vector{Int},
+    kappa_down::Vector{Int},
+    i::Int,
+    j::Int,
+) = spinInteraction!(xprime, kappa_up, kappa_down, i, j, 1.0)
 
 """
 
@@ -371,10 +356,11 @@ Note ``|x>`` here should also be a Mott state.
     # just scan through all the bonds
     @inbounds for bond in nn
         @assert bond[2] > bond[1] "The second site should be larger than the first site, got: $(bond[2]) and $(bond[1])"
-        spinInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
-        spinInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1])
-        SzInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
-        SzInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1])
+        sign = -Ham.Hmat[bond[1], bond[2]]
+        spinInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2], sign)
+        spinInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1], sign)
+        SzInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2], sign)
+        SzInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1], sign)
     end
     return xprime
 end

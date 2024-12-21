@@ -107,8 +107,11 @@ end
     xprime = KagomeDSL.getxprime(ham, kappa_up, kappa_down)
     @test length(keys(xprime)) == 3
     # Sz interaction
-    Sz_sum = (length(DK.nn) - 2) * (1 / 2)
-    Sz_sum += 2 * (2 * (-1 / 4))
+    H = KagomeDSL.Hmat(DK)
+    negative_bonds_num = count(==(1.0), H) / 2
+    Sz_sum = (length(DK.nn) - negative_bonds_num - 2) * (1 / 4) * 2
+    Sz_sum += negative_bonds_num * (-1 / 4) * 2
+    Sz_sum += 2 * (2 * (-1 / 4)) # not affected by anti-PBC
     @test xprime[(-1, -1, -1, -1)] == Sz_sum
     # Sx Sy interaction, only happens in the bonds having site 1
     Sx_Sy_sum = 0.0

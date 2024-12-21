@@ -236,7 +236,7 @@ end
         # Create a simple 2x2 test case
         U_up = [1.0 0.2; 0.2 1.0]
         U_down = [1.0 0.3; 0.3 1.0]
-        ham = Hamiltonian(1, 1, U_up, U_down, zeros(4, 4), [])
+        ham = Hamiltonian(1, 1, U_up, U_down, zeros(4, 4), zeros(4, 4), zeros(4, 4))
         kappa_up = [1, 2]
         kappa_down = [2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(2, 2), zeros(2, 2))
@@ -262,7 +262,7 @@ end
         U_up = (U_up + U_up') / 2  # Make symmetric
         U_down = (U_down + U_down') / 2
 
-        ham = Hamiltonian(2, 2, U_up, U_down, zeros(16, 16), [])
+        ham = Hamiltonian(2, 2, U_up, U_down, zeros(16, 16), zeros(16, 16), zeros(16, 16))
         kappa_up = [1, 2, 3, 4]
         kappa_down = [4, 3, 2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(n, n), zeros(n, n))
