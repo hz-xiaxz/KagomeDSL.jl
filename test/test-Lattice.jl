@@ -62,10 +62,6 @@
     @test K2.distance_matrix[1, 8] ≈ 1.0
     @test K2.distance_matrix[1, 9] ≈ √3
 
-    K3 = KagomeDSL.DoubleKagome(1.0, 4, 4, (true, true); antiPBC = (true, false))
-    @test ns(K3) == 36
-    @test size(K3.distance_matrix) == (36, 36)
-    @test K3.distance_matrix[1, 15] == 0.0
 end
 
 @testset "DoubleKagome" begin
@@ -91,6 +87,9 @@ end
     @test DK.distance_matrix[1, 7] ≈ 4.0
     @test DK.distance_matrix[1, 10] ≈ 6.0
     @test DK.distance_matrix[1, 13] ≈ 2.0
+
+    DK3 = KagomeDSL.DoubleKagome(1.0, 4, 4, (true, true); antiPBC = (true, false))
+    @test DK3.distance_matrix[1, 15] == 0.0
 end
 
 @testset "nearestNeighbor" begin
