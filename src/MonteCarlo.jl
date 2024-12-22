@@ -91,7 +91,7 @@ Throws:
 """
 @inline function is_occupied(kappa::Vector{Int}, l::Int)
     @boundscheck 1 ≤ l ≤ length(kappa) || throw(BoundsError(kappa, l))
-    @inbounds return !iszero(kappa[l])
+    @inbounds return kappa[l] != 0
 end
 
 """
@@ -122,20 +122,29 @@ function MC(params::AbstractDict)
 end
 
 """
-    update_W(W::AbstractMatrix; l::Int, K::Int)
+    update_W_matrices(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
+------------
+Update the W matrices
+"""
+function update_W_matrices(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
+    update_W!(mc.W_up; l = l_up, K = K_up)
+    update_W!(mc.W_down; l = l_down, K = K_down)
+end
+
+"""
+    update_W!(W::AbstractMatrix; l::Int, K::Int)
 ------------
 Update the W matrix
 ``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
 """
-function update_W(W::AbstractMatrix; l::Int, K::Int)
-    factors = [W[I, l] / W[K, l] for I in axes(W, 1)]
-    new_W = similar(W)
-    @inbounds for I in axes(W, 1)
-        for j in axes(W, 2)
-            new_W[I, j] = W[I, j] - factors[I] * (W[K, j] - (l == j ? 1.0 : 0.0))
-        end
+function update_W!(W::AbstractMatrix; l::Int, K::Int)
+    factors = W[:, l] ./ W[K, l]
+    Krow = copy(W[K, :])
+    Krow[l] -= 1.0
+    @views for j in axes(W, 2)
+        W[:, j] .-= factors .* Krow[j]
     end
-    return new_W
+    return nothing
 end
 
 """
@@ -161,12 +170,12 @@ function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVect
     # iterate over all possible moves
     # if two sites connected by a bond, check if they are occupied by different spins
     count = 0
-    for bond in nn
+    @inbounds for bond in nn
         site1 = bond[1]
         site2 = bond[2]
-        if is_occupied(kappa_up, site1) && is_occupied(kappa_down, site2)
+        if kappa_up[site1] != 0 && kappa_down[site2] != 0
             count += 1
-        elseif is_occupied(kappa_up, site2) && is_occupied(kappa_down, site1)
+        elseif kappa_up[site2] != 0 && kappa_down[site1] != 0
             count += 1
         end
     end
@@ -176,15 +185,13 @@ end
 function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_down::Int)
     if flag == 1
         # Update W matrices
-        mc.W_up = update_W(mc.W_up; l = l_up, K = site)
-        mc.W_down = update_W(mc.W_down; l = l_down, K = i)
+        update_W_matrices(mc; K_up = site, K_down = i, l_up = l_up, l_down = l_down)
         # Update kappa configurations
         mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
         mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
     else
         # Update W matrices
-        mc.W_up = update_W(mc.W_up; l = l_up, K = i)
-        mc.W_down = update_W(mc.W_down; l = l_down, K = site)
+        update_W_matrices(mc; K_up = i, K_down = site, l_up = l_up, l_down = l_down)
         # Update kappa configurations
         mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
         mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
@@ -276,7 +283,7 @@ end
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
         OL = getOL(mc, mc.kappa_up, mc.kappa_down)
-        measure!(ctx, :OL, OL / 2)
+        measure!(ctx, :OL, OL)
     end
 end
 

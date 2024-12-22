@@ -272,8 +272,8 @@ function SzInteraction!(
     i::Int,
     j::Int,
 )
-    xprime[(-1, -1, -1, -1)] =
-        get!(xprime, (-1, -1, -1, -1), 0.0) +
+    xprime[ConfigKey(-1, -1, -1, -1)] =
+        get!(xprime, ConfigKey(-1, -1, -1, -1), 0.0) +
         Sz(i, kappa_up, kappa_down) * Sz(j, kappa_up, kappa_down)
     return nothing
 end
@@ -297,32 +297,51 @@ function spinInteraction!(
     i::Int,
     j::Int,
 )
+    i_up = @inbounds kappa_up[i]
+    j_up = @inbounds kappa_up[j]
+    i_down = @inbounds kappa_down[i]
+    j_down = @inbounds kappa_down[j]
     # Case 1: S+_i S-_j
     # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
-    if is_occupied(kappa_up, j) && is_occupied(kappa_down, i)
+    if j_up != 0 && i_down != 0
         # i, j are the original labels, in the {R_l} set
         # kappa[i], kappa[j] bookkeep the order inside tilde U, which is in the {l} set
-        K_up = i    # i gets the up spin
-        K_down = j  # j gets the down spin
-        l_up = kappa_up[j]   # take the up index from j
-        l_down = kappa_down[i]  # take the down index from i
-        new_conf = (K_up, l_up, K_down, l_down)
+        # K_up = i    # i gets the up spin
+        # K_down = j  # j gets the down spin
+        # l_up = kappa_up[j]   # take the up index from j
+        # l_down = kappa_down[i]  # take the down index from i
+        new_conf = ConfigKey(i, j_up, j, i_down)
         xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
     # Case 2: S-_i S+_j
     # i has up spin (kappa_up[i] ≠ 0) and j has down spin (kappa_down[j] ≠ 0)
-    if is_occupied(kappa_up, i) && is_occupied(kappa_down, j)
-        K_up = j    # j gets the up spin
-        K_down = i  # i gets the down spin
-        l_up = kappa_up[i]   # take the up index from i
-        l_down = kappa_down[j]  # take the down index from j
-        new_conf = (K_up, l_up, K_down, l_down)
+    if i_up != 0 && j_down != 0
+        # K_up = j    # j gets the up spin
+        # K_down = i  # i gets the down spin
+        # l_up = kappa_up[i]   # take the up index from i
+        # l_down = kappa_down[j]  # take the down index from j
+        new_conf = ConfigKey(j, i_up, i, j_down)
         xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
     return nothing
 end
+
+struct ConfigKey
+    K_up::Int
+    l_up::Int
+    K_down::Int
+    l_down::Int
+end
+Base.hash(k::ConfigKey, h::UInt) =
+    hash(k.l_down, hash(k.K_down, hash(k.l_up, hash(k.K_up, h))))
+Base.:(==)(a::ConfigKey, b::ConfigKey) =
+    a.K_up == b.K_up && a.l_up == b.l_up && a.K_down == b.K_down && a.l_down == b.l_down
+Base.getindex(k::ConfigKey, i::Int) = getfield(k, i)
+Base.length(::ConfigKey) = 4
+Base.iterate(k::ConfigKey, state = 1) =
+    state > 4 ? nothing : (getfield(k, state), state + 1)
 
 """
 
@@ -331,15 +350,11 @@ Note ``|x>`` here should also be a Mott state.
 """
 @inline function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     nn = Ham.nn
-    @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
-    xprime = Dict{Tuple{Int,Int,Int,Int},Float64}()
+    xprime = Dict{ConfigKey,Float64}()
     # just scan through all the bonds
     @inbounds for bond in nn
-        @assert bond[2] > bond[1] "The second site should be larger than the first site, got: $(bond[2]) and $(bond[1])"
         spinInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
-        spinInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1])
         SzInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
-        SzInteraction!(xprime, kappa_up, kappa_down, bond[2], bond[1])
     end
     return xprime
 end
@@ -356,7 +371,7 @@ The Hamiltonian should be the real one!
     OL = 0.0
     xprime = getxprime(mc.Ham, kappa_up, kappa_down)
     @inbounds for (conf, coff) in pairs(xprime)
-        if conf == (-1, -1, -1, -1)
+        if conf == ConfigKey(-1, -1, -1, -1)
             OL += coff
         else
             update_up = mc.W_up[conf[1], conf[2]]

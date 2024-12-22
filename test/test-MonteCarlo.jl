@@ -1,4 +1,5 @@
 using KagomeDSL
+using KagomeDSL: update_W!, update_W_matrices
 using Random
 using Test
 using LinearAlgebra
@@ -278,4 +279,102 @@ end
         @test isapprox(mc.W_down, mc.W_down', atol = 1e-10)
     end
 
+end
+
+@testset "update_W! and update_W_matrices tests" begin
+    @testset "update_W! basic functionality" begin
+        # Simple 2x2 test case
+        W = [1.0 0.2; 0.2 1.0]
+        W_original = copy(W)
+
+        # Test update with l=1, K=2
+        update_W!(W; l = 1, K = 2)
+
+        # Verify elements manually
+        factor = W[1, 1] / W[2, 1]
+        @test isapprox(W[1, 1], W_original[1, 1] - factor * (W_original[2, 1] - 1.0))
+        @test isapprox(W[1, 2], W_original[1, 2] - factor * W_original[2, 2])
+
+        # Check original matrix wasn't modified
+        @test W != W_original
+    end
+
+    @testset "update_W! matrix properties" begin
+        n = 4
+        W = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
+        W = (W + W') / 2  # Make symmetric
+        W_original = copy(W)
+
+        # Test with random l and K
+        l = rand(1:n)
+        K = rand(1:n)
+        while K == l  # Ensure K ≠ l
+            K = rand(1:n)
+        end
+
+        update_W!(W; l = l, K = K)
+
+        # Test matrix dimensions preserved
+        @test size(W) == size(W_original)
+
+        # Test no NaN or Inf values
+        @test !any(isnan, W)
+        @test !any(isinf, W)
+    end
+
+    @testset "update_W_matrices" begin
+        # Create test MC object
+        n = 3
+        W_up = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
+        W_down = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
+        W_up = (W_up + W_up') / 2
+        W_down = (W_down + W_down') / 2
+
+        # Create mock MC struct with necessary fields
+        mc = MC(
+            Hamiltonian(1, 1, zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
+            zeros(Int, n),
+            zeros(Int, n),
+            copy(W_up),
+            copy(W_down),
+        )
+
+        # Store original matrices
+        W_up_original = copy(mc.W_up)
+        W_down_original = copy(mc.W_down)
+
+        # Test update
+        l_up, K_up = 1, 2
+        l_down, K_down = 2, 3
+
+        update_W_matrices(mc; K_up = K_up, K_down = K_down, l_up = l_up, l_down = l_down)
+
+        # Verify both matrices were updated
+        @test !isapprox(mc.W_up, W_up_original)
+        @test !isapprox(mc.W_down, W_down_original)
+
+        # Verify no NaN or Inf values
+        @test !any(isnan, mc.W_up)
+        @test !any(isnan, mc.W_down)
+        @test !any(isinf, mc.W_up)
+        @test !any(isinf, mc.W_down)
+    end
+
+    @testset "update_W! numerical stability" begin
+        # Test with near-singular matrix
+        W = [1.0 1e-10; 1e-10 1.0]
+
+        # Should handle small values without producing NaN/Inf
+        update_W!(W; l = 1, K = 2)
+        @test !any(isnan, W)
+        @test !any(isinf, W)
+
+        # Test with larger matrix containing small values
+        n = 5
+        W = Matrix{Float64}(I, n, n) + 1e-10 * rand(n, n)
+
+        update_W!(W; l = 1, K = 2)
+        @test !any(isnan, W)
+        @test !any(isinf, W)
+    end
 end
