@@ -99,18 +99,18 @@ function create_distance_matrix(
                         rj .+= a1 * n1
 
                         # distances for periodicity in a2
-                        rj .+= a2 * n1
+                        rj .+= a2 * n2
                         Δ = ri - rj
                         Δx, Δy = Δ[1], Δ[2]
                         d_3 = sqrt(Δx^2 + Δy^2)
 
-                        rj .-= 2 * a2 * n1
+                        rj .-= 2 * a2 * n2
                         Δ = ri - rj
                         Δx, Δy = Δ[1], Δ[2]
                         d_4 = sqrt(Δx^2 + Δy^2)
 
                         # undo change
-                        rj .+= a2 * n1
+                        rj .+= a2 * n2
 
                         # take the minimum distance
                         d = min(d_np, d_1, d_2, d_3, d_4)
@@ -134,18 +134,18 @@ function create_distance_matrix(
 
                     elseif PBC2 & !PBC1
                         # distances for periodicity in a2
-                        rj .+= a2 * n1
+                        rj .+= a2 * n2
                         Δ = ri - rj
                         Δx, Δy = Δ[1], Δ[2]
                         d_3 = sqrt(Δx^2 + Δy^2)
 
-                        rj .-= 2 * a2 * n1
+                        rj .-= 2 * a2 * n2
                         Δ = ri - rj
                         Δx, Δy = Δ[1], Δ[2]
                         d_4 = sqrt(Δx^2 + Δy^2)
 
                         # undo change
-                        rj .+= a2 * n1
+                        rj .+= a2 * n2
 
                         # take the minimum distance
                         d = min(d_np, d_3, d_4)
