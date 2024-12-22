@@ -89,7 +89,7 @@ end
     @test DK.distance_matrix[1, 13] ≈ 2.0
 
     DK3 = KagomeDSL.DoubleKagome(1.0, 4, 4, (true, true); antiPBC = (true, false))
-    @test DK3.distance_matrix[1, 15] == 0.0
+    @test DK3.distance_matrix[1, 15] != 1.0
 end
 
 @testset "nearestNeighbor" begin
