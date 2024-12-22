@@ -173,7 +173,6 @@ function Hmat(lat::DoubleKagome)
             end
         end
     end
-    # careful!
     # verify tunneling matrix is upper triangular
     for i in axes(tunneling, 1)
         for j = 1:i-1
@@ -214,35 +213,6 @@ function Hamiltonian(N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
     return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
 end
 
-
-# """
-#     Splus(i::Int, x::BitStr{N,T}) where {N,T}
-# ``S+ = f^†_{↑} f_{↓}``
-# """
-# function Splus(i::Int, x::BitStr{N,T}) where {N,T}
-#     L = length(x) ÷ 2
-#     if readbit(x, i) == 0 && readbit(x, i + L) == 1
-#         _x = x
-#         _x &= ~indicator(T, i + L)
-#         _x |= indicator(T, i)
-#         return _x, 1.0
-#     else
-#         return x, 0.0
-#     end
-# end
-
-# """
-#     Sminus(i::Int, x::BitStr{N,T}) where {N,T}
-# ``S- = f^†_{↓} f_{↑}``
-# """
-# function Sminus(i::Int, x::BitStr{N,T}) where {N,T}
-#     L = length(x) ÷ 2
-#     if readbit(x, i) == 1 && readbit(x, i + L) == 0
-#         return _x, 1.0
-#     else
-#         return x, 0.0
-#     end
-# end
 
 """
     Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int}) -> Float64
@@ -313,11 +283,6 @@ end
 
 Compute the spin flip term 1/2(S+_i S-_j + S-_i S+_j) contribution to xprime.
 
-Parameters:
-- `xprime`: Dictionary to store the new configurations and their coefficients
-- `kappa_up`: Configuration of up spins
-- `kappa_down`: Configuration of down spins
-- `i`, `j`: Sites where the spin interaction operates
 
 The function handles two cases:
 1. S+_i S-_j: when j has up spin and i has down spin
@@ -387,8 +352,6 @@ The Hamiltonian should be the real one!
 @inline function getOL(mc::AbstractMC, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
     # if double occupied state, no possibility to have a non-zero overlap
-    # don't need to check this because MC will not propose double occupied states
-    # any(conf_up .& conf_down) && return 0.0
 
     OL = 0.0
     xprime = getxprime(mc.Ham, kappa_up, kappa_down)
@@ -396,7 +359,6 @@ The Hamiltonian should be the real one!
         if conf == (-1, -1, -1, -1)
             OL += coff
         else
-            # Gutzwiller(conf) == 0.0 && continue
             update_up = mc.W_up[conf[1], conf[2]]
             update_down = mc.W_down[conf[3], conf[4]]
             OL += coff * update_up * update_down
