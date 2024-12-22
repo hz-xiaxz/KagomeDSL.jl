@@ -91,7 +91,7 @@ Throws:
 """
 @inline function is_occupied(kappa::Vector{Int}, l::Int)
     @boundscheck 1 ≤ l ≤ length(kappa) || throw(BoundsError(kappa, l))
-    @inbounds return !iszero(kappa[l])
+    @inbounds return kappa[l] != 0
 end
 
 """
