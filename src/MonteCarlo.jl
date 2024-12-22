@@ -170,12 +170,12 @@ function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVect
     # iterate over all possible moves
     # if two sites connected by a bond, check if they are occupied by different spins
     count = 0
-    for bond in nn
+    @inbounds for bond in nn
         site1 = bond[1]
         site2 = bond[2]
-        if is_occupied(kappa_up, site1) && is_occupied(kappa_down, site2)
+        if kappa_up[site1] != 0 && kappa_down[site2] != 0
             count += 1
-        elseif is_occupied(kappa_up, site2) && is_occupied(kappa_down, site1)
+        elseif kappa_up[site2] != 0 && kappa_down[site1] != 0
             count += 1
         end
     end
