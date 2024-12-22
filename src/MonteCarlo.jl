@@ -283,7 +283,7 @@ end
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
         OL = getOL(mc, mc.kappa_up, mc.kappa_down)
-        measure!(ctx, :OL, OL / 2)
+        measure!(ctx, :OL, OL)
     end
 end
 
