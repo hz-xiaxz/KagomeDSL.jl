@@ -297,27 +297,31 @@ function spinInteraction!(
     i::Int,
     j::Int,
 )
+    i_up = @inbounds kappa_up[i]
+    j_up = @inbounds kappa_up[j]
+    i_down = @inbounds kappa_down[i]
+    j_down = @inbounds kappa_down[j]
     # Case 1: S+_i S-_j
     # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
-    if is_occupied(kappa_up, j) && is_occupied(kappa_down, i)
+    if j_up != 0 && i_down != 0
         # i, j are the original labels, in the {R_l} set
         # kappa[i], kappa[j] bookkeep the order inside tilde U, which is in the {l} set
-        K_up = i    # i gets the up spin
-        K_down = j  # j gets the down spin
-        l_up = kappa_up[j]   # take the up index from j
-        l_down = kappa_down[i]  # take the down index from i
-        new_conf = (K_up, l_up, K_down, l_down)
+        # K_up = i    # i gets the up spin
+        # K_down = j  # j gets the down spin
+        # l_up = kappa_up[j]   # take the up index from j
+        # l_down = kappa_down[i]  # take the down index from i
+        new_conf = (i, j_up, j, i_down)
         xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
     # Case 2: S-_i S+_j
     # i has up spin (kappa_up[i] ≠ 0) and j has down spin (kappa_down[j] ≠ 0)
-    if is_occupied(kappa_up, i) && is_occupied(kappa_down, j)
-        K_up = j    # j gets the up spin
-        K_down = i  # i gets the down spin
-        l_up = kappa_up[i]   # take the up index from i
-        l_down = kappa_down[j]  # take the down index from j
-        new_conf = (K_up, l_up, K_down, l_down)
+    if i_up != 0 && j_down != 0
+        # K_up = j    # j gets the up spin
+        # K_down = i  # i gets the down spin
+        # l_up = kappa_up[i]   # take the up index from i
+        # l_down = kappa_down[j]  # take the down index from j
+        new_conf = (j, i_up, i, j_down)
         xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
