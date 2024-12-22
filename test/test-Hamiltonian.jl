@@ -1,5 +1,6 @@
 using Random
 using KagomeDSL
+using KagomeDSL: ns, apply_boundary_conditions!, get_boundary_shifts
 @testset "Hamiltonian" begin
     DK = DoubleKagome(1.0, 4, 3, (false, false))
     H = KagomeDSL.Hmat(DK)
