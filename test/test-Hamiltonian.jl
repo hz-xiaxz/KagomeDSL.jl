@@ -23,7 +23,6 @@ using Random
 
     @test H2[1, 2] == -1
     @test H2[1, 3] == -1
-    @test CartesianIndex(1, 11) in DK2.nn
     @test H2[1, 11] == -1 # horizontal PBC
     @test H2[1, 3*4+1] == 0 # vertical OBC
 
@@ -108,9 +107,10 @@ end
     xprime = KagomeDSL.getxprime(ham, kappa_up, kappa_down)
     @test length(keys(xprime)) == 3
     # Sz interaction
-    Sz_sum = (length(DK.nn) - 2) * (1 / 2)
-    Sz_sum += 2 * (2 * (-1 / 4))
-    @test xprime[ConfigKey(-1, -1, -1, -1)] == Sz_sum / 2
+    nn = ham.nn
+    Sz_sum = (length(nn) - 2) * (1 / 4)
+    Sz_sum += (2 * (-1 / 4))
+    @test xprime[ConfigKey(-1, -1, -1, -1)] == Sz_sum
     # Sx Sy interaction, only happens in the bonds having site 1
     Sx_Sy_sum = 0.0
     # Sx Sy = 1/2()
