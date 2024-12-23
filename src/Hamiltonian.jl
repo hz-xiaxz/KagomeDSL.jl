@@ -205,11 +205,17 @@ struct Hamiltonian
     H_mat::Matrix{Float64}
     nn::AbstractArray
 end
+function get_nn(H_mat::AbstractMatrix)
+    # Get upper triangular non-zero elements
+    indices = findall(!iszero, UpperTriangular(H_mat))
+    return [(i[1], i[2]) for i in indices]
+end
+
 
 function Hamiltonian(N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
     H_mat = Hmat(lat)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
-    nn = lat.nn
+    nn = get_nn(H_mat)
     return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
 end
 
