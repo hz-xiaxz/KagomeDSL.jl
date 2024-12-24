@@ -226,7 +226,7 @@ end
     # Test Néel state configuration
     # Sites: 0-1-2 in a line, each connected to neighbors
     nn = [(1, 2), (2, 3), (1, 3)]  # nearest neighbor bonds
-    kappa_up = [0, 1, 0]   # up spins at sites 0,2
+    kappa_up = [0, 1, 0]   # up spins at sites 0,!!2
     kappa_down = [1, 0, 2] # down spins at sites 1
 
     @test KagomeDSL.Z(nn, kappa_up, kappa_down) == 2
@@ -347,7 +347,7 @@ end
         l_up, K_up = 1, 2
         l_down, K_down = 2, 3
 
-        update_W_matrices(mc; K_up = K_up, K_down = K_down, l_up = l_up, l_down = l_down)
+        update_W_matrices!(mc; K_up = K_up, K_down = K_down, l_up = l_up, l_down = l_down)
 
         # Verify both matrices were updated
         @test !isapprox(mc.W_up, W_up_original)
