@@ -110,14 +110,10 @@ function MC(params::AbstractDict)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
     kappa_up, kappa_down = init_conf(rng, ns, N_up)
-    tilde_U_up = tilde_U(Ham.U_up, kappa_up)
-    tilde_U_down = tilde_U(Ham.U_down, kappa_down)
-    U_upinvs = tilde_U_up \ I
-    U_downinvs = tilde_U_down \ I
     # calculate W_up and W_down
     # Calculate W matrices using matrix multiplication
-    W_up = Ham.U_up * U_upinvs
-    W_down = Ham.U_down * U_downinvs
+    W_up = zeros(eltype(Ham.U_up), ns, N_up)
+    W_down = zeros(eltype(Ham.U_down), ns, N_down)
     return MC(Ham, kappa_up, kappa_down, W_up, W_down)
 end
 
@@ -147,6 +143,8 @@ function update_W!(W::AbstractMatrix; l::Int, K::Int)
     return nothing
 end
 
+const MAX_INVERSION_RETRIES = 10
+
 """
     Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
 ------------
@@ -161,9 +159,37 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    kappa_up, kappa_down = init_conf(ctx.rng, ns, N_up)
+    N_down = ns - N_up
+    mc.kappa_up, mc.kappa_down = init_conf(ctx.rng, ns, N_up)
+    tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
+    tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
+    U_upinvs = zeros(eltype(mc.Ham.U_up), N_up, N_up)
+    U_downinvs = zeros(eltype(mc.Ham.U_down), N_down, N_down)
+    for attempt = 1:MAX_INVERSION_RETRIES
+        try
+            U_upinvs = tilde_U_up \ I
+            U_downinvs = tilde_U_down \ I
+            break  # Success - continue with these values
+        catch e
+            if e isa SingularException || e isa LinearAlgebra.LAPACKException
+                if attempt == MAX_INVERSION_RETRIES
+                    error(
+                        "Matrix inversion failed after $MAX_INVERSION_RETRIES attempts. Please check configuration stability.",
+                    )
+                end
+                # Regenerate configurations and update MC state
+                mc.kappa_up, mc.kappa_down = init_conf(ctx.rng, ns, N_up)
+                tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
+                tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
+                continue
+            else
+                rethrow(e)  # If it's not a matrix inversion error,
+            end
+        end
+    end
     # calculate W_up and W_down
-    reevaluateW!(mc)
+    mc.W_up = mc.Ham.U_up * U_upinvs
+    mc.W_down = mc.Ham.U_down * U_downinvs
 end
 
 function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector)
