@@ -1,5 +1,5 @@
 using KagomeDSL
-using KagomeDSL: update_W!, update_W_matrices
+using KagomeDSL: update_W!, update_W_matrices!
 using Random
 using Test
 using LinearAlgebra
