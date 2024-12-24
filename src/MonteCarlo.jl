@@ -126,7 +126,7 @@ end
 ------------
 Update the W matrices
 """
-function update_W_matrices(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
+function update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
     update_W!(mc.W_up; l = l_up, K = K_up)
     update_W!(mc.W_down; l = l_down, K = K_down)
 end
@@ -185,13 +185,13 @@ end
 function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_down::Int)
     if flag == 1
         # Update W matrices
-        update_W_matrices(mc; K_up = site, K_down = i, l_up = l_up, l_down = l_down)
+        update_W_matrices!(mc; K_up = site, K_down = i, l_up = l_up, l_down = l_down)
         # Update kappa configurations
         mc.kappa_up[i], mc.kappa_up[site] = 0, l_up
         mc.kappa_down[i], mc.kappa_down[site] = l_down, 0
     else
         # Update W matrices
-        update_W_matrices(mc; K_up = i, K_down = site, l_up = l_up, l_down = l_down)
+        update_W_matrices!(mc; K_up = i, K_down = site, l_up = l_up, l_down = l_down)
         # Update kappa configurations
         mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
         mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
