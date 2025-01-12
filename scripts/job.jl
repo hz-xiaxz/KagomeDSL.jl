@@ -15,7 +15,7 @@ tm.n2 = 8
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, true)
 tm.antiPBC = (true, false)
-tasks(tm; N_up = ns ÷ 2, N_down = ns ÷ 2)
+task(tm; N_up = ns ÷ 2, N_down = ns ÷ 2)
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
