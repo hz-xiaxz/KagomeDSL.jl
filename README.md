@@ -12,6 +12,20 @@
 [![All Contributors](https://img.shields.io/github/all-contributors/hz-xiaxz/KagomeDSL.jl?labelColor=5e1ec7&color=c0ffee&style=flat-square)](#contributors)
 [![BestieTemplate](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/JuliaBesties/BestieTemplate.jl/main/docs/src/assets/badge.json)](https://github.com/JuliaBesties/BestieTemplate.jl)
 
+> [!IMPORTANT]
+>
+> This project is for exercise and learning purpose. Minor bugs are possible and welcome to be pointed out!
+
+## Overview
+
+KagomeDSL.jl: a personal reproduction of Monte Carlo calculation for U(1) Dirac Spin Liquid on Kagome Lattice. [Ran et al. 2007]
+
+By running the script in `scripts/job.jl`, you can reproduce the results of $\text{SL}[0,\pi]$ ground state energy in the paper.
+
+## Acknowledgments
+
+This project is built with the [Carlo.jl](https://github.com/lukas-weber/Carlo.jl) framework. Thanks Lukas Weber (@lukas-weber) for developing this excellent Monte Carlo framework and providing valuable helps.
+
 ## How to Cite
 
 If you use KagomeDSL.jl in your work, please cite using the reference given in [CITATION.cff](https://github.com/hz-xiaxz/KagomeDSL.jl/blob/main/CITATION.cff).
