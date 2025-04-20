@@ -219,7 +219,7 @@ end
         for (i, site) in enumerate(sites[1:half_n])
             kappa_up[site] = i
         end
-        for (i, site) in enumerate(sites[half_n+1:end])
+        for (i, site) in enumerate(sites[(half_n+1):end])
             kappa_down[site] = i
         end
 

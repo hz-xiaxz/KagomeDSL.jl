@@ -151,7 +151,7 @@ function Hmat(lat::DoubleKagome)
     )
 
     for cell1 = 1:(n1*n2÷2)
-        sites1 = (cell1-1)*6+1:cell1*6
+        sites1 = ((cell1-1)*6+1):(cell1*6)
         for s1 in sites1, s2 in sites1
             s1 >= s2 && continue
             # s1 and s2 are in the same cell, so we only need to check link_in
@@ -163,9 +163,9 @@ function Hmat(lat::DoubleKagome)
         end
     end
     for cell1 = 1:(n1*n2÷2)
-        sites1 = (cell1-1)*6+1:cell1*6
+        sites1 = ((cell1-1)*6+1):(cell1*6)
         for cell2 = 1:(n1*n2÷2)
-            sites2 = (cell2-1)*6+1:cell2*6
+            sites2 = ((cell2-1)*6+1):(cell2*6)
             cell1 == cell2 && continue
             for s1 in sites1, s2 in sites2
                 s1 >= s2 && continue
@@ -175,7 +175,7 @@ function Hmat(lat::DoubleKagome)
     end
     # verify tunneling matrix is upper triangular
     for i in axes(tunneling, 1)
-        for j = 1:i-1
+        for j = 1:(i-1)
             if !iszero(tunneling[i, j])
                 error("tunneling matrix must be upper triangular")
             end
