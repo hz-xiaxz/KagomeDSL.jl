@@ -108,50 +108,52 @@ function apply_boundary_conditions!(
     end
 end
 
+const pi_link_in = Dict(
+    (1, 2) => 1,
+    (1, 3) => 1,
+    (2, 3) => 1,
+    (2, 4) => -1,
+    (4, 6) => 1,
+    (4, 5) => 1,
+    (5, 6) => 1,
+    (2, 1) => 1,
+    (3, 1) => 1,
+    (3, 2) => 1,
+    (4, 2) => -1,
+    (6, 4) => 1,
+    (5, 4) => 1,
+    (6, 5) => 1,
+)
+
+# (lable1, label2, dx, dy)
+const pi_link_inter = Dict(
+    (3, 5, -1, 1) => -1,
+    (3, 1, 0, 1) => -1,
+    (6, 2, 0, 1) => -1,
+    (6, 4, 0, 1) => 1,
+    (5, 1, 1, 0) => 1,
+    (1, 5, -1, 0) => 1,
+    (1, 3, 0, -1) => -1,
+    (2, 6, 0, -1) => -1,
+    (4, 6, 0, -1) => 1,
+    (5, 3, 1, -1) => -1,
+)
+
 """
     Hmat(lat::DoubleKagome) -> Matrix{Float64}
 
 Return the Spinor Hamiltonian matrix for a DoubleKagome lattice.
 """
-function Hmat(lat::DoubleKagome)
+function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inter)
     n1 = lat.n1
     n2 = lat.n2
     ns = n1 * n2 * 3
 
     tunneling = zeros(Float64, ns, ns)
 
-    link_in = Dict(
-        (1, 2) => 1,
-        (1, 3) => 1,
-        (2, 3) => 1,
-        (2, 4) => -1,
-        (4, 6) => 1,
-        (4, 5) => 1,
-        (5, 6) => 1,
-        (2, 1) => 1,
-        (3, 1) => 1,
-        (3, 2) => 1,
-        (4, 2) => -1,
-        (6, 4) => 1,
-        (5, 4) => 1,
-        (6, 5) => 1,
-    )
-    # (lable1, label2, dx, dy)
-    link_inter = Dict(
-        (3, 5, -1, 1) => -1,
-        (3, 1, 0, 1) => -1,
-        (6, 2, 0, 1) => -1,
-        (6, 4, 0, 1) => 1,
-        (5, 1, 1, 0) => 1,
-        (1, 5, -1, 0) => 1,
-        (1, 3, 0, -1) => -1,
-        (2, 6, 0, -1) => -1,
-        (4, 6, 0, -1) => 1,
-        (5, 3, 1, -1) => -1,
-    )
 
     for cell1 = 1:(n1*n2÷2)
-        sites1 = (cell1-1)*6+1:cell1*6
+        sites1 = ((cell1-1)*6+1):(cell1*6)
         for s1 in sites1, s2 in sites1
             s1 >= s2 && continue
             # s1 and s2 are in the same cell, so we only need to check link_in
@@ -163,9 +165,9 @@ function Hmat(lat::DoubleKagome)
         end
     end
     for cell1 = 1:(n1*n2÷2)
-        sites1 = (cell1-1)*6+1:cell1*6
+        sites1 = ((cell1-1)*6+1):(cell1*6)
         for cell2 = 1:(n1*n2÷2)
-            sites2 = (cell2-1)*6+1:cell2*6
+            sites2 = ((cell2-1)*6+1):(cell2*6)
             cell1 == cell2 && continue
             for s1 in sites1, s2 in sites2
                 s1 >= s2 && continue
@@ -175,7 +177,7 @@ function Hmat(lat::DoubleKagome)
     end
     # verify tunneling matrix is upper triangular
     for i in axes(tunneling, 1)
-        for j = 1:i-1
+        for j = 1:(i-1)
             if !iszero(tunneling[i, j])
                 error("tunneling matrix must be upper triangular")
             end
@@ -212,8 +214,14 @@ function get_nn(H_mat::AbstractMatrix)
 end
 
 
-function Hamiltonian(N_up::Int, N_down::Int, lat::T) where {T<:AbstractLattice}
-    H_mat = Hmat(lat)
+function Hamiltonian(
+    N_up::Int,
+    N_down::Int,
+    lat::T;
+    link_in = pi_link_in,
+    link_inter = pi_link_inter,
+) where {T<:AbstractLattice}
+    H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = get_nn(H_mat)
     return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
