@@ -11,8 +11,6 @@ body:
 
         - You have checked the [documentation](https://hz-xiaxz.github.io/KagomeDSL.jl) and haven't found enough information
         - There is not an [existing issue](https://github.com/hz-xiaxz/KagomeDSL.jl/issues) with the same question
-        - You have read the [contributing guide](https://hz-xiaxz.github.io/KagomeDSL.jl/dev/90-contributing/)
-        - You are following the [code of conduct](https://github.com/hz-xiaxz/KagomeDSL.jl/blob/main/CODE_OF_CONDUCT.md)
         The form below should help you in filling out this issue.
   - type: textarea
     id: description
