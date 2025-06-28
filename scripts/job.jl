@@ -10,7 +10,7 @@ using ArnoldiMethod
 
 tm = TaskMaker()
 tm.thermalization = 5000
-tm.sweeps = 10_000_000
+tm.sweeps = 50_000_000
 tm.binsize = 50
 tm.n1 = 8
 tm.n2 = 8
