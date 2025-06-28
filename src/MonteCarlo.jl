@@ -103,17 +103,13 @@ function MC(params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
     PBC = params[:PBC]
-    lat = DoubleKagome(1.0, n1, n2, PBC)
+    antiPBC = get(params, :antiPBC, (false, false))
+    lat_type = get(params, :lattice, DoubleKagome)
+    lat = lat_type(1.0, n1, n2, PBC; antiPBC = antiPBC)
     N_up = params[:N_up]
     N_down = params[:N_down]
-    link_in = pi_link_in
-    link_inter = pi_link_inter
-    if haskey(params, :link_in)
-        link_in = params[:link_in]
-    end
-    if haskey(params, :link_inter)
-        link_inter = params[:link_inter]
-    end
+    link_in = get(params, :link_in, pi_link_in)
+    link_inter = get(params, :link_inter, pi_link_inter)
     Ham = Hamiltonian(N_up, N_down, lat; link_in = link_in, link_inter = link_inter)
     rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3

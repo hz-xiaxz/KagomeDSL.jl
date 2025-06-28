@@ -462,61 +462,64 @@ end
 end
 
 @testset "unitcell_coord" begin
-    n1, n2 = 3, 2  # Small lattice for testing
+    n1, n2 = 4, 2  # Small lattice for testing, n1 must be even
+    lat = DoubleKagome(1.0, n1, n2, (false, false))
+    test_n1 = n1 ÷ 2
 
     # Test first unit cell (sites 1-6)
-    @test KagomeDSL.unitcell_coord(1, n1, n2) ≈ [0.0, 0.0]
-    @test KagomeDSL.unitcell_coord(6, n1, n2) ≈ [0.0, 0.0]
+    @test KagomeDSL.unitcell_coord(lat, 1) ≈ [0.0, 0.0]
+    @test KagomeDSL.unitcell_coord(lat, 6) ≈ [0.0, 0.0]
 
     # Test middle unit cell
     middle_cell = 2  # second cell in first row
-    @test KagomeDSL.unitcell_coord(6 * middle_cell - 5, n1, n2) ≈ [4.0, 0.0]
+    @test KagomeDSL.unitcell_coord(lat, 6 * (middle_cell - 1) + 1) ≈ lat.a1
 
     # Test last unit cell
-    last_site = n1 * n2 * 6
-    expected_last = [(n1 - 1) * 4.0 + (n2 - 1) * 1.0, (n2 - 1) * sqrt(3.0)]
-    @test KagomeDSL.unitcell_coord(last_site, n1, n2) ≈ expected_last
+    last_site = test_n1 * n2 * 6
+    expected_last = (test_n1 - 1) * lat.a1 + (n2 - 1) * lat.a2
+    @test KagomeDSL.unitcell_coord(lat, last_site) ≈ expected_last
     # Test row transitions
     # Last cell in first row
-    @test KagomeDSL.unitcell_coord(6 * n1, n1, n2) ≈ [(n1 - 1) * 4.0, 0.0]
+    @test KagomeDSL.unitcell_coord(lat, 6 * test_n1) ≈ (test_n1 - 1) * lat.a1
     # First cell in second row
-    @test KagomeDSL.unitcell_coord(6 * n1 + 1, n1, n2) ≈ [1.0, sqrt(3.0)]
+    @test KagomeDSL.unitcell_coord(lat, 6 * test_n1 + 1) ≈ lat.a2
 
     # Test error cases
-    @test_throws AssertionError KagomeDSL.unitcell_coord(0, n1, n2)
-    @test_throws AssertionError KagomeDSL.unitcell_coord(n1 * n2 * 6 + 1, n1, n2)
+    @test_throws AssertionError KagomeDSL.unitcell_coord(lat, 0)
+    @test_throws AssertionError KagomeDSL.unitcell_coord(lat, test_n1 * n2 * 6 + 1)
 
     # Test coordinate system
     # Check x-direction spacing
-    x1 = KagomeDSL.unitcell_coord(1, n1, n2)[1]
-    x2 = KagomeDSL.unitcell_coord(7, n1, n2)[1]  # Next cell in x-direction
+    x1 = KagomeDSL.unitcell_coord(lat, 1)[1]
+    x2 = KagomeDSL.unitcell_coord(lat, 7)[1]  # Next cell in x-direction
     @test x2 - x1 ≈ 4.0
 
     # Check y-direction spacing
-    y1 = KagomeDSL.unitcell_coord(1, n1, n2)[2]
-    y2 = KagomeDSL.unitcell_coord(6 * n1 + 1, n1, n2)[2]  # Next cell in y-direction
+    y1 = KagomeDSL.unitcell_coord(lat, 1)[2]
+    y2 = KagomeDSL.unitcell_coord(lat, 6 * test_n1 + 1)[2]  # Next cell in y-direction
     @test y2 - y1 ≈ sqrt(3.0)
 end
 
 @testset "unitcell_diff with integer rounding" begin
+    lat = DoubleKagome(1.0, 4, 3, (false, false))
     # Define basis vectors
-    a1 = [4.0, 0.0]
-    a2 = [1.0, sqrt(3.0)]
+    a1 = lat.a1
+    a2 = lat.a2
 
     # Test exact unit translations
     @testset "Exact unit translations" begin
         # One unit in a1 direction
-        dx, dy = KagomeDSL.unitcell_diff(a1, [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, a1, [0.0, 0.0])
         @test dx == 1
         @test dy == 0
 
         # One unit in a2 direction
-        dx, dy = KagomeDSL.unitcell_diff(a2, [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, a2, [0.0, 0.0])
         @test dx == 0
         @test dy == 1
 
         # One unit in each direction
-        dx, dy = KagomeDSL.unitcell_diff(a1 + a2, [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, a1 + a2, [0.0, 0.0])
         @test dx == 1
         @test dy == 1
     end
@@ -526,12 +529,12 @@ end
         # Slightly perturbed coordinates should round to same integers
         for ε in [-0.1, 0.1]
             # Near one unit in a1
-            dx, dy = KagomeDSL.unitcell_diff(a1 + [ε, ε], [0.0, 0.0])
+            dx, dy = KagomeDSL.unitcell_diff(lat, a1 + [ε, ε], [0.0, 0.0])
             @test dx == 1
             @test dy == 0
 
             # Near one unit in a2
-            dx, dy = KagomeDSL.unitcell_diff(a2 + [ε, ε], [0.0, 0.0])
+            dx, dy = KagomeDSL.unitcell_diff(lat, a2 + [ε, ε], [0.0, 0.0])
             @test dx == 0
             @test dy == 1
         end
@@ -539,11 +542,11 @@ end
 
     # Test negative translations
     @testset "Negative translations" begin
-        dx, dy = KagomeDSL.unitcell_diff([0.0, 0.0], a1)
+        dx, dy = KagomeDSL.unitcell_diff(lat, [0.0, 0.0], a1)
         @test dx == -1
         @test dy == 0
 
-        dx, dy = KagomeDSL.unitcell_diff([0.0, 0.0], a2)
+        dx, dy = KagomeDSL.unitcell_diff(lat, [0.0, 0.0], a2)
         @test dx == 0
         @test dy == -1
     end
@@ -551,29 +554,29 @@ end
     # Test multiple unit cells
     @testset "Multiple unit cells" begin
         # Two units in a1
-        dx, dy = KagomeDSL.unitcell_diff(2 * a1, [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, 2 * a1, [0.0, 0.0])
         @test dx == 2
         @test dy == 0
 
         # Two units in a2
-        dx, dy = KagomeDSL.unitcell_diff(2 * a2, [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, 2 * a2, [0.0, 0.0])
         @test dx == 0
         @test dy == 2
 
         # Diagonal: two units in each direction
-        dx, dy = KagomeDSL.unitcell_diff(2 * a1 + 2 * a2, [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, 2 * a1 + 2 * a2, [0.0, 0.0])
         @test dx == 2
         @test dy == 2
     end
 
     # Test zero difference
     @testset "Zero difference" begin
-        dx, dy = KagomeDSL.unitcell_diff([0.0, 0.0], [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, [0.0, 0.0], [0.0, 0.0])
         @test dx == 0
         @test dy == 0
 
         # Small perturbations should still give zero
-        dx, dy = KagomeDSL.unitcell_diff([0.1, 0.1], [0.0, 0.0])
+        dx, dy = KagomeDSL.unitcell_diff(lat, [0.1, 0.1], [0.0, 0.0])
         @test dx == 0
         @test dy == 0
     end
@@ -590,7 +593,7 @@ end
         ]
 
         for (coord1, coord2, expected_dx, expected_dy) in positions
-            dx, dy = KagomeDSL.unitcell_diff(coord1, coord2)
+            dx, dy = KagomeDSL.unitcell_diff(lat, coord1, coord2)
             @test dx == expected_dx
             @test dy == expected_dy
         end

@@ -2,30 +2,37 @@
 # (i, j) i is the initial state, j is the final state
 # in-cell transitions, needs index1 mod 6 == index2 mod 6
 
-function unitcell_coord(s::Int, n1::Int, n2::Int)
-    @assert s >= 1 && s <= n1 * n2 * 6 "s should be in the range of 1 to ns, got: $s"
+function unitcell_coord(lat::AbstractLattice, s::Int)
+    n1 = lat.n1 ÷ 2
+    n2 = lat.n2
+    ns = n1 * n2 * 6
+    @assert s >= 1 && s <= ns "s should be in the range of 1 to ns, got: $s"
     unitcell_num = (s - 1) ÷ 6
-    a1 = [4.0, 0.0]
-    a2 = [1.0, sqrt(3.0)]
+    a1 = lat.a1
+    a2 = lat.a2
     unitcell_coord = (unitcell_num % n1) * a1 + (unitcell_num ÷ n1) * a2
     return unitcell_coord
 end
 
-function unitcell_diff(unitcell_coord1::Vector{Float64}, unitcell_coord2::Vector{Float64})
+function unitcell_diff(
+    lat::AbstractLattice,
+    unitcell_coord1::Vector{Float64},
+    unitcell_coord2::Vector{Float64},
+)
     diff = unitcell_coord1 - unitcell_coord2
     # projects onto a1 and a2
-    a1 = [4.0, 0.0]
-    a2 = [1.0, sqrt(3.0)]
+    a1 = lat.a1
+    a2 = lat.a2
     # Solve x*a1 + y*a2 = diff
-    # [4.0 1.0  ] [x] = [diff[1]]
-    # [0.0 √3.0 ] [y]   [diff[2]]
+    # [a1[1] a2[1]] [x] = [diff[1]]
+    # [a1[2] a2[2]] [y]   [diff[2]]
 
     # Solve using matrix inversion:
-    # [x] = [4.0 1.0  ]^-1 [diff[1]]
-    # [y]   [0.0 √3.0 ]    [diff[2]]
-
-    dx = round(Int, (sqrt(3.0) * diff[1] - diff[2]) / (4.0 * sqrt(3.0)))
-    dy = round(Int, diff[2] / sqrt(3.0))
+    # [x] = [a1[1] a2[1]]^-1 [diff[1]]
+    # [y]   [a1[2] a2[2]]    [diff[2]]
+    det = a1[1] * a2[2] - a1[2] * a2[1]
+    dx = round(Int, (a2[2] * diff[1] - a2[1] * diff[2]) / det)
+    dy = round(Int, (-a1[2] * diff[1] + a1[1] * diff[2]) / det)
     return dx, dy
 end
 
@@ -41,9 +48,9 @@ function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
     ns = n1 * n2 * 6
     @assert s1 >= 1 && s1 <= ns "s1 should be in the range of 1 to ns, got: $s1 in $ns"
     @assert s2 >= 1 && s2 <= ns "s2 should be in the range of 1 to ns, got: $s2 in $ns"
-    u1 = unitcell_coord(s1, n1, n2)
-    u2 = unitcell_coord(s2, n1, n2)
-    dx, dy = unitcell_diff(u2, u1)
+    u1 = unitcell_coord(lat, s1)
+    u2 = unitcell_coord(lat, s2)
+    dx, dy = unitcell_diff(lat, u2, u1)
 
     # No shifts for open boundary conditions
     if lat.PBC == (false, false)
@@ -145,6 +152,49 @@ const pi_link_inter = Dict(
 Return the Spinor Hamiltonian matrix for a DoubleKagome lattice.
 """
 function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inter)
+    n1 = lat.n1
+    n2 = lat.n2
+    ns = n1 * n2 * 3
+
+    tunneling = zeros(Float64, ns, ns)
+
+
+    for cell1 = 1:(n1*n2÷2)
+        sites1 = ((cell1-1)*6+1):(cell1*6)
+        for s1 in sites1, s2 in sites1
+            s1 >= s2 && continue
+            # s1 and s2 are in the same cell, so we only need to check link_in
+            label1 = (s1 - 1) % 6 + 1
+            label2 = (s2 - 1) % 6 + 1
+            if haskey(link_in, (label1, label2))
+                tunneling[s1, s2] = link_in[(label1, label2)]
+            end
+        end
+    end
+    for cell1 = 1:(n1*n2÷2)
+        sites1 = ((cell1-1)*6+1):(cell1*6)
+        for cell2 = 1:(n1*n2÷2)
+            sites2 = ((cell2-1)*6+1):(cell2*6)
+            cell1 == cell2 && continue
+            for s1 in sites1, s2 in sites2
+                s1 >= s2 && continue
+                apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+            end
+        end
+    end
+    # verify tunneling matrix is upper triangular
+    for i in axes(tunneling, 1)
+        for j = 1:(i-1)
+            if !iszero(tunneling[i, j])
+                error("tunneling matrix must be upper triangular")
+            end
+        end
+    end
+    return -(tunneling + tunneling')
+    # Seems like the sign of tunneling is opposite to the one in the paper
+end
+
+function Hmat(lat::DoubleKagome2; link_in = pi_link_in, link_inter = pi_link_inter)
     n1 = lat.n1
     n2 = lat.n2
     ns = n1 * n2 * 3
