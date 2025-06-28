@@ -8,6 +8,9 @@ using Dates
 using LinearAlgebra
 using ArnoldiMethod
 
+BLAS.set_num_threads(1)
+MKL.set_dynamic(true)   
+
 tm = TaskMaker()
 tm.thermalization = 5000
 tm.sweeps = 50_000_000
