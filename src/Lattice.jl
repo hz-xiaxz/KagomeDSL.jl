@@ -97,7 +97,7 @@ function DoubleKagome2(
     # coordinates of each site in the unit cell
     r1 = [0.0, 0.0]
     r2 = 0.25 * a1
-    r3 = 0.5 * a2
+    r3 = 0.5 * [-a2[1], a2[2]]
     r4 = 0.5 * a1
     r5 = 0.75 * a1
     r6 = [2.5t, 0.5√3t]
