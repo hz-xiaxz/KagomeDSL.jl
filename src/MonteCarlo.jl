@@ -322,7 +322,12 @@ end
     eval::Evaluator,
     params::AbstractDict,
 )
-
+    n1 = params[:n1]
+    n2 = params[:n2]
+    ns = n1 * n2 * 3
+    evaluate!(eval, :energy, (:OL,)) do OL
+        return OL / ns
+    end
     return nothing
 end
 
