@@ -214,6 +214,7 @@ struct Hamiltonian
     H_mat::Matrix{Float64}
     nn::AbstractArray
 end
+
 function get_nn(H_mat::AbstractMatrix)
     # Get upper triangular non-zero elements
     indices = findall(!iszero, UpperTriangular(H_mat))
