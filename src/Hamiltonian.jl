@@ -194,49 +194,6 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
     # Seems like the sign of tunneling is opposite to the one in the paper
 end
 
-function Hmat(lat::DoubleKagome2; link_in = pi_link_in, link_inter = pi_link_inter)
-    n1 = lat.n1
-    n2 = lat.n2
-    ns = n1 * n2 * 3
-
-    tunneling = zeros(Float64, ns, ns)
-
-
-    for cell1 = 1:(n1*n2÷2)
-        sites1 = ((cell1-1)*6+1):(cell1*6)
-        for s1 in sites1, s2 in sites1
-            s1 >= s2 && continue
-            # s1 and s2 are in the same cell, so we only need to check link_in
-            label1 = (s1 - 1) % 6 + 1
-            label2 = (s2 - 1) % 6 + 1
-            if haskey(link_in, (label1, label2))
-                tunneling[s1, s2] = link_in[(label1, label2)]
-            end
-        end
-    end
-    for cell1 = 1:(n1*n2÷2)
-        sites1 = ((cell1-1)*6+1):(cell1*6)
-        for cell2 = 1:(n1*n2÷2)
-            sites2 = ((cell2-1)*6+1):(cell2*6)
-            cell1 == cell2 && continue
-            for s1 in sites1, s2 in sites2
-                s1 >= s2 && continue
-                apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
-            end
-        end
-    end
-    # verify tunneling matrix is upper triangular
-    for i in axes(tunneling, 1)
-        for j = 1:(i-1)
-            if !iszero(tunneling[i, j])
-                error("tunneling matrix must be upper triangular")
-            end
-        end
-    end
-    return -(tunneling + tunneling')
-    # Seems like the sign of tunneling is opposite to the one in the paper
-end
-
 # temporarily separate the N_up and N_down subspaces
 function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
     search_num = max(N_up, N_down)

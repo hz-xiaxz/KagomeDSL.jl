@@ -6,7 +6,7 @@ using Carlo
 using HDF5
 using ArnoldiMethod
 
-export DoubleKagome, DoubleKagome2
+export DoubleKagome
 include("Lattice.jl")
 
 export Hamiltonian, fast_update, Sz, spinInteraction!
