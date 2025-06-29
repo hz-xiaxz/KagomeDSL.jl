@@ -206,7 +206,7 @@ end
 
     @testset "Random configurations" begin
         n = 100
-        rng = Random.MersenneTwister(42)
+        rng = Random.Xoshiro(42)
 
         # Create random valid configuration
         sites = shuffle(rng, 1:n)

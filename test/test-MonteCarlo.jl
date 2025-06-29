@@ -1,8 +1,9 @@
-using KagomeDSL
-using KagomeDSL: update_W!, update_W_matrices!
+using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U
 using Random
 using Test
 using LinearAlgebra
+using Carlo
+using HDF5
 
 @testset "MC" begin
     param = Dict(:n1 => 4, :n2 => 3, :PBC => (true, false), :N_up => 18, :N_down => 18)
@@ -13,7 +14,7 @@ end
 
 @testset "KagomeDSL.init_conf tests" begin
     @testset "Basic functionality" begin
-        rng = Random.MersenneTwister(42)  # Fixed seed for reproducibility
+        rng = Random.Xoshiro(42)  # Fixed seed for reproducibility
         ns = 10
         N_up = 4
 
@@ -27,7 +28,7 @@ end
     end
 
     @testset "Conservation properties" begin
-        rng = Random.MersenneTwister(42)
+        rng = Random.Xoshiro(42)
         ns = 12
         N_up = 5
 
@@ -45,7 +46,7 @@ end
     end
 
     @testset "Mutual exclusivity" begin
-        rng = Random.MersenneTwister(42)
+        rng = Random.Xoshiro(42)
         ns = 8
         N_up = 3
 
@@ -58,7 +59,7 @@ end
     end
 
     @testset "Edge cases" begin
-        rng = Random.MersenneTwister(42)
+        rng = Random.Xoshiro(42)
 
         # Test with N_up = 0
         kappa_up, kappa_down = KagomeDSL.init_conf(rng, 5, 0)
@@ -78,7 +79,7 @@ end
     end
 
     @testset "Random distribution" begin
-        rng = Random.MersenneTwister(42)
+        rng = Random.Xoshiro(42)
         ns = 100
         N_up = 40
 
@@ -377,4 +378,119 @@ end
         @test !any(isnan, W)
         @test !any(isinf, W)
     end
+end
+
+@testset "is_occupied" begin
+    kappa = [1, 0, 2, 0]
+    @test is_occupied(kappa, 1) == true
+    @test is_occupied(kappa, 2) == false
+    @test is_occupied(kappa, 3) == true
+    @test is_occupied(kappa, 4) == false
+    @test_throws BoundsError is_occupied(kappa, 5)
+end
+
+
+@testset "update_configurations!" begin
+    # Setup initial MC state
+    n = 4
+    W_up = Matrix{Float64}(I, n, n)
+    W_down = Matrix{Float64}(I, n, n)
+    mc = MC(
+        Hamiltonian(2, 2, W_up, W_down, zeros(n^2, n^2), []),
+        [1, 0, 2, 0],
+        [0, 1, 0, 2],
+        copy(W_up),
+        copy(W_down),
+    )
+
+    @testset "flag = 1" begin
+        mc_copy = deepcopy(mc)
+        update_configurations!(mc_copy, 1, 2, 1, 1, 1)
+
+        # Test kappa_up update
+        @test mc_copy.kappa_up[1] == 1
+        @test mc_copy.kappa_up[2] == 0
+
+        # Test kappa_down update
+        @test mc_copy.kappa_down[1] == 0
+        @test mc_copy.kappa_down[2] == 1
+    end
+
+    @testset "flag = 2" begin
+        mc_copy = deepcopy(mc)
+        update_configurations!(mc_copy, 2, 1, 2, 1, 1)
+
+        # Test kappa_up update
+        @test mc_copy.kappa_up[1] == 1
+        @test mc_copy.kappa_up[2] == 0
+        # Test kappa_down update
+        @test mc_copy.kappa_down[1] == 0
+        @test mc_copy.kappa_down[2] == 1
+    end
+end
+
+@testset "Carlo.init!" begin
+    param = Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 6, :N_down => 6)
+    mc = MC(param)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+
+    # Test successful initialization
+    Carlo.init!(mc, ctx, param)
+    @test !any(iszero, mc.W_up)
+    @test !any(iszero, mc.W_down)
+
+    # Test singular matrix handling
+    # Force a singular matrix by creating a linearly dependent configuration
+    # This is hard to do reliably, so we test the retry mechanism
+    # by mocking the `\` operator to throw a SingularException
+    # For now, we just ensure the retry loop is tested implicitly by coverage
+end
+
+@testset "Carlo.sweep! and Carlo.measure!" begin
+    param = Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 6, :N_down => 6)
+    mc = MC(param)
+
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, param)
+
+    # Test that a sweep runs without error
+    @test begin
+        Carlo.sweep!(mc, ctx)
+        true
+    end
+
+    # Test that a measurement runs without error
+    ctx.sweeps = 1
+    @test begin
+        Carlo.measure!(mc, ctx)
+        true
+    end
+end
+
+@testset "Checkpointing" begin
+    param = Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc1 = MC(param)
+    mc2 = MC(param)
+
+    # Create a temporary file for checkpointing
+    mktemp() do path, io
+        close(io) # Close the handle to allow HDF5 to use the file
+        h5open(path, "w") do file
+            group = create_group(file, "test")
+            Carlo.write_checkpoint(mc1, group)
+        end
+
+        h5open(path, "r") do file
+            group = file["test"]
+            Carlo.read_checkpoint!(mc2, group)
+        end
+    end
+
+
+    @test mc1.kappa_up == mc2.kappa_up
+    @test mc1.kappa_down == mc2.kappa_down
 end
