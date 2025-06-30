@@ -115,7 +115,8 @@ end
         U_down_mock = rand(ns, N_down)
         mock_ham = Hamiltonian(N_up, N_down, U_up_mock, U_down_mock, zeros(ns, ns), [])
 
-        mc = MC(mock_ham, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
+        mc =
+            MC(mock_ham, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
 
         # Call the QR-based initialization
         KagomeDSL.init_conf_qr!(mc, ns, N_up)
@@ -513,6 +514,31 @@ end
         tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
         @test abs(det(tilde_U_down)) != 0.0
     end
+end
+
+@testset "Carlo.init! singular configuration handling" begin
+    n1 = 2
+    n2 = 2
+    ns = n1 * n2 * 3 # 12 sites
+    N_up = 6
+    N_down = ns - N_up # 6 sites
+
+    # Create a mock U_up matrix that will lead to a singular tilde_U_up
+    # Make all rows identical to guarantee singularity of tilde_U_up
+    U_up_singular = rand(1, N_up) # Create one random row
+    U_up_singular = repeat(U_up_singular, ns, 1) # Repeat it for all ns rows
+
+    # Create a mock Hamiltonian with the singular U_up
+    mock_ham_singular = Hamiltonian(N_up, N_down, U_up_singular, rand(ns, N_down), zeros(ns, ns), [])
+
+    mc_singular = MC(mock_ham_singular, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
+
+    ctx_singular = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+
+    # Expect an error to be thrown
+    @test_throws ErrorException("QR-based configuration is singular. The Hamiltonian may be rank-deficient.") Carlo.init!(mc_singular, ctx_singular, Dict(:n1 => n1, :n2 => n2, :PBC => (false, false), :N_up => N_up, :N_down => N_down))
 end
 
 @testset "Carlo.sweep! and Carlo.measure!" begin
