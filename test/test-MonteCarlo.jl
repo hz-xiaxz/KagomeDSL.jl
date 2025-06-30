@@ -8,8 +8,7 @@ using HDF5
 @testset "MC" begin
     param = Dict(:n1 => 4, :n2 => 3, :PBC => (true, false), :N_up => 18, :N_down => 18)
     test_mc = MC(param)
-    @test length(filter(!iszero, test_mc.kappa_up)) == 18
-    @test length(filter(!iszero, test_mc.kappa_down)) == 18
+    # kappa_up and kappa_down are initialized in Carlo.init!, so we don't check their lengths here.
 end
 
 @testset "KagomeDSL.init_conf tests" begin
@@ -99,6 +98,70 @@ end
             @test sort(filter(!iszero, kappa_up)) == collect(1:N_up)
             @test sort(filter(!iszero, kappa_down)) == collect(1:(ns-N_up))
         end
+    end
+end
+
+@testset "init_conf_qr! tests" begin
+    @testset "Basic functionality and non-singularity" begin
+        n1 = 2
+        n2 = 2
+        ns = n1 * n2 * 3 # 12 sites
+        N_up = 6
+        N_down = ns - N_up # 6 sites
+
+        # Create a mock Hamiltonian for testing
+        # Ensure U_up and U_down are full rank for a non-singular tilde_U to be possible
+        U_up_mock = rand(ns, N_up)
+        U_down_mock = rand(ns, N_down)
+        mock_ham = Hamiltonian(N_up, N_down, U_up_mock, U_down_mock, zeros(ns, ns), [])
+
+        mc = MC(mock_ham, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
+
+        # Call the QR-based initialization
+        KagomeDSL.init_conf_qr!(mc, ns, N_up)
+
+        # Verify kappa_up and kappa_down properties
+        @test count(!iszero, mc.kappa_up) == N_up
+        @test count(!iszero, mc.kappa_down) == N_down
+        @test all(x -> x in 1:N_up, filter(!iszero, mc.kappa_up))
+        @test all(x -> x in 1:N_down, filter(!iszero, mc.kappa_down))
+        for i = 1:ns
+            @test xor(mc.kappa_up[i] != 0, mc.kappa_down[i] != 0)
+        end
+
+        # Verify non-singularity of tilde_U matrices
+        tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
+        @test abs(det(tilde_U_up)) > eps(Float64)
+
+        if N_down > 0
+            tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
+            @test abs(det(tilde_U_down)) > eps(Float64)
+        end
+    end
+
+    @testset "Edge cases for init_conf_qr!" begin
+        ns = 10
+        # N_up = 0
+        U_up_mock_0 = rand(ns, 0)
+        U_down_mock_0 = rand(ns, ns)
+        mock_ham_0 = Hamiltonian(0, ns, U_up_mock_0, U_down_mock_0, zeros(ns, ns), [])
+        mc_0 = MC(mock_ham_0, zeros(Int, ns), zeros(Int, ns), zeros(ns, 0), zeros(ns, ns))
+        KagomeDSL.init_conf_qr!(mc_0, ns, 0)
+        @test all(iszero, mc_0.kappa_up)
+        @test count(!iszero, mc_0.kappa_down) == ns
+        tilde_U_down_0 = tilde_U(mc_0.Ham.U_down, mc_0.kappa_down)
+        @test abs(det(tilde_U_down_0)) > eps(Float64)
+
+        # N_up = ns
+        U_up_mock_ns = rand(ns, ns)
+        U_down_mock_ns = rand(ns, 0)
+        mock_ham_ns = Hamiltonian(ns, 0, U_up_mock_ns, U_down_mock_ns, zeros(ns, ns), [])
+        mc_ns = MC(mock_ham_ns, zeros(Int, ns), zeros(Int, ns), zeros(ns, ns), zeros(ns, 0))
+        KagomeDSL.init_conf_qr!(mc_ns, ns, ns)
+        @test count(!iszero, mc_ns.kappa_up) == ns
+        @test all(iszero, mc_ns.kappa_down)
+        tilde_U_up_ns = tilde_U(mc_ns.Ham.U_up, mc_ns.kappa_up)
+        @test abs(det(tilde_U_up_ns)) > eps(Float64)
     end
 end
 
@@ -436,16 +499,20 @@ end
         Dict(:binsize => 3, :seed => 123, :thermalization => 10),
     )
 
-    # Test successful initialization
+    # Test successful initialization with QR method
     Carlo.init!(mc, ctx, param)
     @test !any(iszero, mc.W_up)
     @test !any(iszero, mc.W_down)
 
-    # Test singular matrix handling
-    # Force a singular matrix by creating a linearly dependent configuration
-    # This is hard to do reliably, so we test the retry mechanism
-    # by mocking the `\` operator to throw a SingularException
-    # For now, we just ensure the retry loop is tested implicitly by coverage
+    # Verify that tilde_U matrices are non-singular after initialization
+    tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
+    @test abs(det(tilde_U_up)) != 0.0
+
+    N_down = (param[:n1] * param[:n2] * 3) - param[:N_up]
+    if N_down > 0
+        tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
+        @test abs(det(tilde_U_down)) != 0.0
+    end
 end
 
 @testset "Carlo.sweep! and Carlo.measure!" begin

@@ -111,11 +111,9 @@ function MC(params::AbstractDict)
     link_in = get(params, :link_in, pi_link_in)
     link_inter = get(params, :link_inter, pi_link_inter)
     Ham = Hamiltonian(N_up, N_down, lat; link_in = link_in, link_inter = link_inter)
-    rng = Random.Xoshiro(42)
     ns = n1 * n2 * 3
-    kappa_up, kappa_down = init_conf(rng, ns, N_up)
-    # calculate W_up and W_down
-    # Calculate W matrices using matrix multiplication
+    kappa_up = zeros(Int, ns)
+    kappa_down = zeros(Int, ns)
     W_up = zeros(eltype(Ham.U_up), ns, N_up)
     W_down = zeros(eltype(Ham.U_down), ns, N_down)
     return MC(Ham, kappa_up, kappa_down, W_up, W_down)
@@ -147,7 +145,103 @@ function update_W!(W::AbstractMatrix; l::Int, K::Int)
     return nothing
 end
 
-const MAX_INVERSION_RETRIES = 10
+
+"""
+    init_conf_qr!(mc::MC, ns::Int, N_up::Int)
+
+Ref: Quantum Monte Carlo Approaches for Correlated Systems (Becca and Sorella, 2017) P130
+
+As system size increases, ``<Φ|x>`` becomes exponentially small comparing to system size, inversely proportional to the dimension of the Hilbert space.
+
+The smallness of init ``<Φ|x>`` will lead to numerical instability in the first computation of the W matrices, but not affecting the Markov chain sampling, since we always calculate ``\\frac{<Φ|x'>}{<Φ|x>}`` there, which shall not be a numerically instable number.
+
+To avoid this issue we initializes the particle configurations `kappa_up` and `kappa_down` in the `mc` object
+using a deterministic method based on QR decomposition with column pivoting.
+
+This approach is designed to select a set of sites for the up and down spin
+electrons that corresponds to a set of linearly independent rows from the `U_up` and
+`U_down` matrices, respectively. This maximizes the chances of producing a
+non-singular `tilde_U` matrix, avoiding the need for random trial-and-error.
+
+The procedure is as follows:
+1.  It performs QR decomposition on `mc.Ham.U_up'` to select the `N_up` most
+    linearly independent rows (sites) for the up-spin electrons.
+2.  It then takes the remaining, unoccupied sites and performs a second QR
+    decomposition on the corresponding subset of `mc.Ham.U_down'` to select the
+    `N_down` sites for the down-spin electrons.
+
+Parameters:
+- `mc`: The Monte Carlo object, which will be modified in-place.
+- `ns`: The total number of sites in the lattice.
+- `N_up`: The number of up-spin electrons.
+"""
+function init_conf_qr!(mc::MC, ns::Int, N_up::Int)
+    # Use QR decomposition with pivoting to select linearly independent rows from U
+    # This should give a non-singular tilde_U matrix if possible.
+
+    # For kappa_up
+    Q_up, R_up, p_up = qr(mc.Ham.U_up', ColumnNorm())
+    sites_up = p_up[1:N_up]
+    mc.kappa_up = zeros(Int, ns)
+    for (i, site) in enumerate(sites_up)
+        mc.kappa_up[site] = i
+    end
+
+    # For kappa_down
+    N_down = ns - N_up
+    if N_down > 0
+        available_sites = setdiff(1:ns, sites_up)
+        U_down_subset = mc.Ham.U_down[available_sites, :]
+
+        Q_down, R_down, p_down_subset = qr(U_down_subset', ColumnNorm())
+        sites_down_indices = p_down_subset[1:N_down]
+        sites_down = available_sites[sites_down_indices]
+
+        mc.kappa_down = zeros(Int, ns)
+        for (i, site) in enumerate(sites_down)
+            mc.kappa_down[site] = i
+        end
+    else
+        mc.kappa_down = zeros(Int, ns)
+    end
+
+    return nothing
+end
+
+"""
+    find_initial_configuration!(mc::MC, rng::AbstractRNG, ns::Int, N_up::Int, n1::Int)
+
+Finds a non-singular initial configuration for the MC simulation.
+This version uses a deterministic QR-based method and should not require retries.
+"""
+function find_initial_configuration!(mc::MC, rng::AbstractRNG, ns::Int, N_up::Int, n1::Int)
+    init_conf_qr!(mc, ns, N_up)
+
+    tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
+    N_down = ns - N_up
+    if N_down > 0
+        tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
+    end
+
+    try
+        U_upinvs = tilde_U_up \ I
+        mc.W_up = mc.Ham.U_up * U_upinvs
+
+        if N_down > 0
+            tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
+            U_downinvs = tilde_U_down \ I
+            mc.W_down = mc.Ham.U_down * U_downinvs
+        end
+        return # Success
+    catch e
+        if e isa SingularException || e isa LinearAlgebra.LAPACKException
+            error("QR-based configuration is singular. The Hamiltonian may be rank-deficient.")
+        else
+            rethrow(e)
+        end
+    end
+end
+
 
 """
     Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
@@ -163,37 +257,7 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    N_down = ns - N_up
-    mc.kappa_up, mc.kappa_down = init_conf(ctx.rng, ns, N_up)
-    tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
-    tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-    U_upinvs = zeros(eltype(mc.Ham.U_up), N_up, N_up)
-    U_downinvs = zeros(eltype(mc.Ham.U_down), N_down, N_down)
-    for attempt = 1:MAX_INVERSION_RETRIES
-        try
-            U_upinvs = tilde_U_up \ I
-            U_downinvs = tilde_U_down \ I
-            break  # Success - continue with these values
-        catch e
-            if e isa SingularException || e isa LinearAlgebra.LAPACKException
-                if attempt == MAX_INVERSION_RETRIES
-                    error(
-                        "Matrix inversion failed after $MAX_INVERSION_RETRIES attempts. Please check configuration stability.",
-                    )
-                end
-                # Regenerate configurations and update MC state
-                mc.kappa_up, mc.kappa_down = init_conf(ctx.rng, ns, N_up)
-                tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
-                tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-                continue
-            else
-                rethrow(e)  # If it's not a matrix inversion error,
-            end
-        end
-    end
-    # calculate W_up and W_down
-    mc.W_up = mc.Ham.U_up * U_upinvs
-    mc.W_down = mc.Ham.U_down * U_downinvs
+    find_initial_configuration!(mc, ctx.rng, ns, N_up, n1)
 end
 
 function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector)
