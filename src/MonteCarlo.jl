@@ -214,7 +214,7 @@ end
 Finds a non-singular initial configuration for the MC simulation.
 This version uses a deterministic QR-based method and should not require retries.
 """
-function find_initial_configuration!(mc::MC, rng::AbstractRNG, ns::Int, N_up::Int, n1::Int)
+function find_initial_configuration!(mc::MC, ns::Int, N_up::Int)
     init_conf_qr!(mc, ns, N_up)
 
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
@@ -257,7 +257,7 @@ Initialize the Monte Carlo object
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    find_initial_configuration!(mc, ctx.rng, ns, N_up, n1)
+    find_initial_configuration!(mc, ns, N_up)
 end
 
 function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector)
