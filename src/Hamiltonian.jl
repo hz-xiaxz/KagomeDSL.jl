@@ -229,21 +229,21 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
             end
         end
     end
-    @infiltrate
     return -(tunneling + tunneling')
     # from the sign of `-t`
 end
 
 # temporarily separate the N_up and N_down subspaces
 function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
-    search_num = max(N_up, N_down)
+    # search_num = max(N_up, N_down)
     # get sampling ensemble U_up and U_down
-    decomp, history =
-        ArnoldiMethod.partialschur(H_mat, nev = search_num, tol = 1e-14, which = :SR)
+    F = eigen(Hermitian(H_mat))
+    p = sortperm(F.values)
+    evalues = F.values[p]
+    evecs = F.vectors[:, p]
     # select N lowest eigenvectors as the sampling ensemble
-    U_up = decomp.Q[:, 1:N_up]
-    U_down = decomp.Q[:, 1:N_down]
-    @infiltrate
+    U_up = evecs[:, 1:N_up]
+    U_down = evecs[:, 1:N_down]
     return U_up, U_down
 end
 
