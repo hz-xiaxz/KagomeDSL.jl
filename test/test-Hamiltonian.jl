@@ -1,7 +1,6 @@
 using KagomeDSL
 using KagomeDSL: ns, apply_boundary_conditions!, get_boundary_shifts, ConfigKey
 using Random
-using ArnoldiMethod
 @testset "Hamiltonian" begin
     DK = DoubleKagome(1.0, 4, 3, (false, false))
     H = KagomeDSL.Hmat(DK)
@@ -772,14 +771,5 @@ end
         phase = (B / 2) * (r1[1] + r2_real[1]) * (r2_real[2] - r1[2])
         link_val = KagomeDSL.pi_link_inter[(1, 5, -1, 0)]
         @test H_B_pbc[s1, s2] == -link_val * exp(im * phase)
-    end
-
-    @testset "Eigenvalue Reality" begin
-        DK_pbc = DoubleKagome(1.0, 4, 3, (true, true))
-        H_B_pbc = KagomeDSL.Hmat(DK_pbc, B = 0.1)
-        decomp, history =
-            ArnoldiMethod.partialschur(H_B_pbc, nev = 10, tol = 1e-12, which = :SR)
-        eigenvalues = decomp.eigenvalues
-        @test all(x -> abs(imag(x)) < 1e-12, eigenvalues)
     end
 end

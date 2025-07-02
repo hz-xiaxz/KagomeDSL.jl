@@ -4,8 +4,6 @@ using StatsBase
 using Random
 using Carlo
 using HDF5
-using ArnoldiMethod
-using Infiltrator
 
 export DoubleKagome
 include("Lattice.jl")
