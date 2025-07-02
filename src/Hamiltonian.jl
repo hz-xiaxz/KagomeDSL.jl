@@ -208,7 +208,7 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
             end
         end
     end
-    
+
     # inter-cell case
     for cell1 = 1:(n1*n2÷2)
         sites1 = ((cell1-1)*6+1):(cell1*6)
@@ -229,6 +229,7 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
             end
         end
     end
+    @infiltrate
     return -(tunneling + tunneling')
     # from the sign of `-t`
 end
@@ -242,6 +243,7 @@ function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
     # select N lowest eigenvectors as the sampling ensemble
     U_up = decomp.Q[:, 1:N_up]
     U_down = decomp.Q[:, 1:N_down]
+    @infiltrate
     return U_up, U_down
 end
 
