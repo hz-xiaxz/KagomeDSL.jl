@@ -93,23 +93,6 @@ function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
     return unique(shifts)
 end
 
-"""
-    apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, B)
-
-Calculates and adds hopping terms between two sites (`s1`, `s2`) in different unit cells,
-considering boundary conditions and a uniform magnetic field (Peierls substitution).
-
-This function modifies the `tunneling` matrix in place.
-
-# Arguments
-- `tunneling::AbstractMatrix`: The matrix representing hopping amplitudes, to be modified.
-- `lat::AbstractLattice`: The lattice structure.
-- `s1::Int`: The index of the first site.
-- `s2::Int`: The index of the second site.
-- `link_inter::Dict`: A dictionary defining the inter-unit-cell hoppings.
-                       The keys are tuples `(label1, label2, dx, dy)`, and values are hopping strengths.
-- `B::Float64`: The strength of the perpendicular magnetic field.
-"""
 function apply_boundary_conditions!(
     tunneling::AbstractMatrix,
     lat::AbstractLattice,
@@ -118,45 +101,26 @@ function apply_boundary_conditions!(
     link_inter::Dict,
     B::Float64,
 )
-    # There are 6 sites per unit cell.
-    # Calculate unit cell index and intra-cell label for each site.
-    unitcell1_idx = (s1 - 1) ÷ 6 + 1
-    unitcell2_idx = (s2 - 1) ÷ 6 + 1
-    @assert unitcell1_idx != unitcell2_idx "s1 and s2 should not be in the same cell"
+    cell1 = (s1 - 1) ÷ 6 + 1
+    cell2 = (s2 - 1) ÷ 6 + 1
+    @assert cell1 != cell2 "s1 and s2 should not be in the same cell"
+    label1 = (s1 - 1) % 6 + 1
+    label2 = (s2 - 1) % 6 + 1
+    shifts = get_boundary_shifts(lat, s1, s2)
 
-    site1_label = (s1 - 1) % 6 + 1
-    site2_label = (s2 - 1) % 6 + 1
+    r1 = get_site_coord(lat, s1)
+    r_uc_1 = unitcell_coord(lat, s1)
+    dr_2 = get_site_coord(lat, s2) - unitcell_coord(lat, s2)
+    # note the phase is always calulated with one single bond
+    for (dx, dy, sign) in shifts
+        if haskey(link_inter, (label1, label2, dx, dy))
+            r_uc_2_real = r_uc_1 + dx * lat.a1 + dy * lat.a2
+            r2_real = r_uc_2_real + dr_2
 
-    # Get all possible shifts due to periodic boundary conditions.
-    # Each shift is a tuple (dx, dy, sign), where (dx, dy) is the unit-cell shift
-    # and sign accounts for anti-periodic boundary conditions.
-    boundary_shifts = get_boundary_shifts(lat, s1, s2)
-
-    # Get coordinates for site 1
-    site1_coord = get_site_coord(lat, s1)
-    unitcell1_coord = unitcell_coord(lat, s1)
-
-    # Get the position of site 2 relative to its unit cell origin.
-    site2_relative_coord = get_site_coord(lat, s2) - unitcell_coord(lat, s2)
-
-    # Iterate over all possible connections to site 2, considering boundary conditions.
-    for (dx, dy, sign) in boundary_shifts
-        # Check if a hopping term is defined for this pair of sites and unit-cell shift
-        if haskey(link_inter, (site1_label, site2_label, dx, dy))
-            # Calculate the real-space coordinate of the (potentially wrapped-around) site 2.
-            # 1. Find the coordinate of the shifted unit cell of site 2.
-            shifted_unitcell2_coord = unitcell1_coord + dx * lat.a1 + dy * lat.a2
-            # 2. Add the relative position of site 2 within its cell.
-            shifted_site2_coord = shifted_unitcell2_coord + site2_relative_coord
-
-            peierls_phase =
-                (B / 2) *
-                (site1_coord[1] + shifted_site2_coord[1]) *
-                (shifted_site2_coord[2] - site1_coord[2])
+            peierls_phase = (B / 2) * (r1[1] + r2_real[1]) * (r2_real[2] - r1[2])
             hopping_value = exp(im * peierls_phase)
 
-            tunneling[s1, s2] +=
-                sign * link_inter[(site1_label, site2_label, dx, dy)] * hopping_value
+            tunneling[s1, s2] += sign * link_inter[(label1, label2, dx, dy)] * hopping_value
         end
     end
 end
@@ -199,22 +163,36 @@ function get_site_coord(lat::AbstractLattice, s::Int)
 end
 
 """
-    Hmat(lat::DoubleKagome) -> Matrix{ComplexF64}
+    Hmat(
+        lat::DoubleKagome;
+        link_in = pi_link_in,
+        link_inter = pi_link_inter,
+        B = 0.0,
+    ) -> Matrix{ComplexF64}
 
-Return the Spinon Hamiltonian matrix for a DoubleKagome lattice.
+Constructs the Spinon Hamiltonian matrix for a `DoubleKagome` lattice.
+
+This function calculates the hopping terms within and between unit cells, incorporating
+a Peierls phase to account for a magnetic field `B`. The resulting matrix
+represents the Hamiltonian of the system.
+
+# Arguments
+- `lat::DoubleKagome`: The lattice structure for which to construct the Hamiltonian.
+- `link_in`: A dictionary defining in-cell hopping terms. Defaults to `pi_link_in`.
+- `link_inter`: A dictionary defining inter-cell hopping terms. Defaults to `pi_link_inter`.
+- `B::Float64`: The magnetic field strength, used to calculate the Peierls phase. Defaults to `0.0`.
+
+# Returns
+- `Matrix{ComplexF64}`: The Hamiltonian matrix for the given lattice and parameters.
 """
-function Hmat(
-    lat::DoubleKagome;
-    link_in = pi_link_in,
-    link_inter = pi_link_inter,
-    B = 0.0,
-)
+function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inter, B = 0.0)
     n1 = lat.n1
     n2 = lat.n2
     ns = n1 * n2 * 3
 
     tunneling = zeros(ComplexF64, ns, ns)
 
+    # in cell case
     for cell1 = 1:(n1*n2÷2)
         sites1 = ((cell1-1)*6+1):(cell1*6)
         for s1 in sites1, s2 in sites1
@@ -230,6 +208,8 @@ function Hmat(
             end
         end
     end
+    
+    # inter-cell case
     for cell1 = 1:(n1*n2÷2)
         sites1 = ((cell1-1)*6+1):(cell1*6)
         for cell2 = 1:(n1*n2÷2)
@@ -250,7 +230,7 @@ function Hmat(
         end
     end
     return -(tunneling + tunneling')
-    # Seems like the sign of tunneling is opposite to the one in the paper
+    # from the sign of `-t`
 end
 
 # temporarily separate the N_up and N_down subspaces
