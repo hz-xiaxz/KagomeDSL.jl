@@ -9,9 +9,9 @@ using ArnoldiMethod
     @test H ≈ H'
     @test isempty(findall(x -> !(x ≈ 0), H - H'))
     # test that the first row of H has only 2,3 position elements =1 and others =0
-    @test H[1, 1] ≈ 0
-    @test H[1, 2] ≈ -1
-    @test H[1, 3] ≈ -1
+    @test H[1, 1] == 0
+    @test H[1, 2] == -1
+    @test H[1, 3] == -1
     for i = 4:36
         @test H[1, i] ≈ 0
     end
@@ -22,10 +22,10 @@ using ArnoldiMethod
     @test isempty(findall(x -> !(x ≈ 0), H2 - H2'))
     @test H2 ≈ H2'
 
-    @test H2[1, 2] ≈ -1
-    @test H2[1, 3] ≈ -1
-    @test H2[1, 11] ≈ -1 # horizontal PBC
-    @test H2[1, 3*4+1] ≈ 0 # vertical OBC
+    @test H2[1, 2] == -1
+    @test H2[1, 3] == -1
+    @test H2[1, 11] == -1 # horizontal PBC
+    @test H2[1, 3*4+1] == 0 # vertical OBC
 
     # Anti-periodic boundary condition tests
     @testset "Anti-periodic boundary conditions" begin
@@ -33,32 +33,32 @@ using ArnoldiMethod
         DK_antiX = DoubleKagome(1.0, 4, 3, (true, false); antiPBC = (true, false))
         H_antiX = KagomeDSL.Hmat(DK_antiX)
         @test H_antiX ≈ H_antiX'  # Check Hermiticity
-        @test H_antiX[1, 2] ≈ -1  # Normal in-cell bond
-        @test H_antiX[1, 3] ≈ -1  # Normal in-cell bond
-        @test H_antiX[5, 7] ≈ -1   # Normal inter-cell bond
-        @test H_antiX[1, 11] ≈ 1 # Boundary crossing with anti-PBC in x
+        @test H_antiX[1, 2] == -1  # Normal in-cell bond
+        @test H_antiX[1, 3] == -1  # Normal in-cell bond
+        @test H_antiX[5, 7] == -1   # Normal inter-cell bond
+        @test H_antiX[1, 11] == 1 # Boundary crossing with anti-PBC in x
 
         # Test anti-PBC in y direction
         DK_antiY = DoubleKagome(1.0, 4, 3, (true, true); antiPBC = (false, true))
         H_antiY = KagomeDSL.Hmat(DK_antiY)
         @test H_antiY ≈ H_antiY'  # Check Hermiticity
-        @test H_antiY[1, 11] ≈ -1   # Normal horizontal bond
-        @test H_antiY[1, 3+4*6] ≈ -1  # Vertical bond with anti-PBC
+        @test H_antiY[1, 11] == -1   # Normal horizontal bond
+        @test H_antiY[1, 3+4*6] == -1  # Vertical bond with anti-PBC
 
         # Test anti-PBC in both directions
         DK_antiBoth = DoubleKagome(1.0, 4, 3, (true, true); antiPBC = (true, true))
         H_antiBoth = KagomeDSL.Hmat(DK_antiBoth)
         @test H_antiBoth ≈ H_antiBoth'  # Check Hermiticity
-        @test H_antiBoth[1, 11] ≈ 1  # x-direction anti-PBC
-        @test H_antiBoth[1, 27] ≈ -1  # y-direction anti-PBC
-        @test H_antiBoth[11, 27] ≈ 1  # Double crossing should give positive sign
+        @test H_antiBoth[1, 11] == 1  # x-direction anti-PBC
+        @test H_antiBoth[1, 27] == -1  # y-direction anti-PBC
+        @test H_antiBoth[11, 27] == 1  # Double crossing should give positive sign
 
         # Test mixed boundary conditions
         DK_mixed = DoubleKagome(1.0, 4, 3, (true, true); antiPBC = (true, false))
         H_mixed = KagomeDSL.Hmat(DK_mixed)
         @test H_mixed ≈ H_mixed'  # Check Hermiticity
-        @test H_mixed[1, 11] ≈ 1  # x-direction anti-PBC
-        @test H_mixed[1, 3+4*6] ≈ 1  # y-direction normal PBC
+        @test H_mixed[1, 11] == 1  # x-direction anti-PBC
+        @test H_mixed[1, 3+4*6] == 1  # y-direction normal PBC
     end
 
     # Test error cases
@@ -703,21 +703,21 @@ end
 
 @testset "get_site_coord" begin
     lat = DoubleKagome(1.0, 4, 3, (false, false))
-    
+
     # Test site 1 (origin of first unit cell)
-    @test KagomeDSL.get_site_coord(lat, 1) ≈ [0.0, 0.0]
+    @test KagomeDSL.get_site_coord(lat, 1) == [0.0, 0.0]
 
     # Test site 2
-    @test KagomeDSL.get_site_coord(lat, 2) ≈ [1.0, 0.0]
+    @test KagomeDSL.get_site_coord(lat, 2) == [1.0, 0.0]
 
     # Test site 3
-    @test KagomeDSL.get_site_coord(lat, 3) ≈ [0.5, 0.5*sqrt(3.0)]
+    @test KagomeDSL.get_site_coord(lat, 3) == [0.5, 0.5 * sqrt(3.0)]
 
     # Test site 7 (first site of the next unit cell in a1 direction)
-    @test KagomeDSL.get_site_coord(lat, 7) ≈ [4.0, 0.0]
-    
+    @test KagomeDSL.get_site_coord(lat, 7) == [4.0, 0.0]
+
     # Test site 13 (first site of the next unit cell in a2 direction)
-    @test KagomeDSL.get_site_coord(lat, 13) ≈ [1.0, sqrt(3.0)]
+    @test KagomeDSL.get_site_coord(lat, 13) == [1.0, sqrt(3.0)]
 end
 
 @testset "Magnetic Field" begin
@@ -731,7 +731,7 @@ end
     end
 
     @testset "Zero Field Limit" begin
-        @test H_0 ≈ KagomeDSL.Hmat(DK)
+        @test H_0 == KagomeDSL.Hmat(DK)
     end
 
     @testset "Phase Correctness (in-cell)" begin
@@ -740,15 +740,15 @@ end
         r1 = KagomeDSL.get_site_coord(DK, s1)
         r2 = KagomeDSL.get_site_coord(DK, s2)
         phase = (B / 2) * (r1[1] + r2[1]) * (r2[2] - r1[2])
-        @test H_B[s1, s2] ≈ -exp(im * phase)
+        @test H_B[s1, s2] == -exp(im * phase)
 
         # Test a bond with zero phase
         s1, s2 = 1, 2
         r1 = KagomeDSL.get_site_coord(DK, s1)
         r2 = KagomeDSL.get_site_coord(DK, s2)
         phase = (B / 2) * (r1[1] + r2[1]) * (r2[2] - r1[2])
-        @test phase ≈ 0.0
-        @test H_B[s1, s2] ≈ -1.0
+        @test phase == 0.0
+        @test H_B[s1, s2] == -1.0
     end
 
     @testset "Phase Correctness (inter-cell, no PBC)" begin
@@ -756,7 +756,7 @@ end
         r1 = KagomeDSL.get_site_coord(DK, s1)
         r2 = KagomeDSL.get_site_coord(DK, s2)
         phase = (B / 2) * (r1[1] + r2[1]) * (r2[2] - r1[2])
-        @test H_B[s1, s2] ≈ -KagomeDSL.pi_link_inter[(3, 1, 0, 1)] * exp(im * phase)
+        @test H_B[s1, s2] == -KagomeDSL.pi_link_inter[(3, 1, 0, 1)] * exp(im * phase)
     end
 
     @testset "Phase Correctness (PBC)" begin
@@ -767,17 +767,18 @@ end
         r2 = KagomeDSL.get_site_coord(DK_pbc, s2)
         # This is a bond that wraps around the x-boundary
         # The shift corresponds to dx_uc = 1, but with PBC, one image is at dx = 1 - n1/2 = -1
-        pbc_shift_vec = - (DK_pbc.n1/2) * DK_pbc.a1
+        pbc_shift_vec = -(DK_pbc.n1 ÷ 2) * DK_pbc.a1
         r2_real = r2 + pbc_shift_vec
         phase = (B / 2) * (r1[1] + r2_real[1]) * (r2_real[2] - r1[2])
         link_val = KagomeDSL.pi_link_inter[(1, 5, -1, 0)]
-        @test H_B_pbc[s1, s2] ≈ -link_val*exp(im * phase)
+        @test H_B_pbc[s1, s2] == -link_val * exp(im * phase)
     end
 
     @testset "Eigenvalue Reality" begin
         DK_pbc = DoubleKagome(1.0, 4, 3, (true, true))
         H_B_pbc = KagomeDSL.Hmat(DK_pbc, B = 0.1)
-        decomp, history = ArnoldiMethod.partialschur(H_B_pbc, nev = 10, tol = 1e-12, which = :SR)
+        decomp, history =
+            ArnoldiMethod.partialschur(H_B_pbc, nev = 10, tol = 1e-12, which = :SR)
         eigenvalues = decomp.eigenvalues
         @test all(x -> abs(imag(x)) < 1e-12, eigenvalues)
     end
