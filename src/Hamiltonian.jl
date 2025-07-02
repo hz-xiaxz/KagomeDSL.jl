@@ -93,6 +93,23 @@ function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
     return unique(shifts)
 end
 
+"""
+    apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, B)
+
+Calculates and adds hopping terms between two sites (`s1`, `s2`) in different unit cells,
+considering boundary conditions and a uniform magnetic field (Peierls substitution).
+
+This function modifies the `tunneling` matrix in place.
+
+# Arguments
+- `tunneling::AbstractMatrix`: The matrix representing hopping amplitudes, to be modified.
+- `lat::AbstractLattice`: The lattice structure.
+- `s1::Int`: The index of the first site.
+- `s2::Int`: The index of the second site.
+- `link_inter::Dict`: A dictionary defining the inter-unit-cell hoppings.
+                       The keys are tuples `(label1, label2, dx, dy)`, and values are hopping strengths.
+- `B::Float64`: The strength of the perpendicular magnetic field.
+"""
 function apply_boundary_conditions!(
     tunneling::AbstractMatrix,
     lat::AbstractLattice,
@@ -101,26 +118,45 @@ function apply_boundary_conditions!(
     link_inter::Dict,
     B::Float64,
 )
-    cell1 = (s1 - 1) ÷ 6 + 1
-    cell2 = (s2 - 1) ÷ 6 + 1
-    @assert cell1 != cell2 "s1 and s2 should not be in the same cell"
-    label1 = (s1 - 1) % 6 + 1
-    label2 = (s2 - 1) % 6 + 1
-    shifts = get_boundary_shifts(lat, s1, s2)
+    # There are 6 sites per unit cell.
+    # Calculate unit cell index and intra-cell label for each site.
+    unitcell1_idx = (s1 - 1) ÷ 6 + 1
+    unitcell2_idx = (s2 - 1) ÷ 6 + 1
+    @assert unitcell1_idx != unitcell2_idx "s1 and s2 should not be in the same cell"
 
-    r1 = get_site_coord(lat, s1)
-    r_uc_1 = unitcell_coord(lat, s1)
-    dr_2 = get_site_coord(lat, s2) - unitcell_coord(lat, s2)
+    site1_label = (s1 - 1) % 6 + 1
+    site2_label = (s2 - 1) % 6 + 1
 
-    for (dx, dy, sign) in shifts
-        if haskey(link_inter, (label1, label2, dx, dy))
-            r_uc_2_real = r_uc_1 + dx * lat.a1 + dy * lat.a2
-            r2_real = r_uc_2_real + dr_2
+    # Get all possible shifts due to periodic boundary conditions.
+    # Each shift is a tuple (dx, dy, sign), where (dx, dy) is the unit-cell shift
+    # and sign accounts for anti-periodic boundary conditions.
+    boundary_shifts = get_boundary_shifts(lat, s1, s2)
 
-            peierls_phase = (B / 2) * (r1[1] + r2_real[1]) * (r2_real[2] - r1[2])
+    # Get coordinates for site 1
+    site1_coord = get_site_coord(lat, s1)
+    unitcell1_coord = unitcell_coord(lat, s1)
+
+    # Get the position of site 2 relative to its unit cell origin.
+    site2_relative_coord = get_site_coord(lat, s2) - unitcell_coord(lat, s2)
+
+    # Iterate over all possible connections to site 2, considering boundary conditions.
+    for (dx, dy, sign) in boundary_shifts
+        # Check if a hopping term is defined for this pair of sites and unit-cell shift
+        if haskey(link_inter, (site1_label, site2_label, dx, dy))
+            # Calculate the real-space coordinate of the (potentially wrapped-around) site 2.
+            # 1. Find the coordinate of the shifted unit cell of site 2.
+            shifted_unitcell2_coord = unitcell1_coord + dx * lat.a1 + dy * lat.a2
+            # 2. Add the relative position of site 2 within its cell.
+            shifted_site2_coord = shifted_unitcell2_coord + site2_relative_coord
+
+            peierls_phase =
+                (B / 2) *
+                (site1_coord[1] + shifted_site2_coord[1]) *
+                (shifted_site2_coord[2] - site1_coord[2])
             hopping_value = exp(im * peierls_phase)
 
-            tunneling[s1, s2] += sign * link_inter[(label1, label2, dx, dy)] * hopping_value
+            tunneling[s1, s2] +=
+                sign * link_inter[(site1_label, site2_label, dx, dy)] * hopping_value
         end
     end
 end
