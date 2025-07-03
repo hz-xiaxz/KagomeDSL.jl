@@ -15,3 +15,4 @@ data/
 notebook/
 scripts/debug_job.jl
 LocalPreferences.toml
+/benchmark/

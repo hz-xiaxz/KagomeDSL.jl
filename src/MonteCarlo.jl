@@ -4,6 +4,11 @@ mutable struct MC <: AbstractMC
     kappa_down::Vector{Int}
     W_up::AbstractMatrix
     W_down::AbstractMatrix
+    # Caches for zero-allocation updates
+    W_up_col_cache::Vector{ComplexF64}
+    W_up_row_cache::Vector{ComplexF64}
+    W_down_col_cache::Vector{ComplexF64}
+    W_down_row_cache::Vector{ComplexF64}
 end
 
 function reevaluateW!(mc::MC)
@@ -116,7 +121,24 @@ function MC(params::AbstractDict)
     kappa_down = zeros(Int, ns)
     W_up = zeros(eltype(Ham.U_up), ns, N_up)
     W_down = zeros(eltype(Ham.U_down), ns, N_down)
-    return MC(Ham, kappa_up, kappa_down, W_up, W_down)
+
+    # Initialize caches
+    W_up_col_cache = Vector{ComplexF64}(undef, ns)
+    W_up_row_cache = Vector{ComplexF64}(undef, N_up)
+    W_down_col_cache = Vector{ComplexF64}(undef, ns)
+    W_down_row_cache = Vector{ComplexF64}(undef, N_down)
+
+    return MC(
+        Ham,
+        kappa_up,
+        kappa_down,
+        W_up,
+        W_down,
+        W_up_col_cache,
+        W_up_row_cache,
+        W_down_col_cache,
+        W_down_row_cache,
+    )
 end
 
 """
@@ -125,8 +147,8 @@ end
 Update the W matrices
 """
 function update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
-    update_W!(mc.W_up; l = l_up, K = K_up)
-    update_W!(mc.W_down; l = l_down, K = K_down)
+    update_W!(mc.W_up, l_up, K_up, mc.W_up_col_cache, mc.W_up_row_cache)
+    update_W!(mc.W_down, l_down, K_down, mc.W_down_col_cache, mc.W_down_row_cache)
 end
 
 """
@@ -135,12 +157,29 @@ end
 Update the W matrix
 ``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
 """
-function update_W!(W::AbstractMatrix; l::Int, K::Int)
-    factors = W[:, l] ./ W[K, l]
-    Krow = copy(W[K, :])
-    Krow[l] -= 1.0
-    @views for j in axes(W, 2)
-        W[:, j] .-= factors .* Krow[j]
+function update_W!(
+    W::AbstractMatrix,
+    l::Int,
+    K::Int,
+    col_cache::AbstractVector,
+    row_cache::AbstractVector,
+)
+    inv_WKL = inv(W[K, l])
+
+    copyto!(row_cache, view(W, K, :))
+    row_cache[l] -= 1.0
+    copyto!(col_cache, view(W, :, l))
+
+    rows, cols = axes(W)
+
+    @inbounds for j in cols
+        scalar_Krow_j = row_cache[j]
+        if scalar_Krow_j != 0
+            @simd for i in rows
+                factor_i = col_cache[i] * inv_WKL
+                W[i, j] -= factor_i * scalar_Krow_j
+            end
+        end
     end
     return nothing
 end
@@ -235,7 +274,9 @@ function find_initial_configuration!(mc::MC, ns::Int, N_up::Int)
         return # Success
     catch e
         if e isa SingularException || e isa LinearAlgebra.LAPACKException
-            error("QR-based configuration is singular. The Hamiltonian may be rank-deficient.")
+            error(
+                "QR-based configuration is singular. The Hamiltonian may be rank-deficient.",
+            )
         else
             rethrow(e)
         end
