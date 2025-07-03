@@ -102,7 +102,8 @@ end
 """
     MC(params::AbstractDict)
 ------------
-Create a Monte Carlo object
+Create a Monte Carlo object from a dictionary of parameters.
+This is the user-facing, high-level constructor.
 """
 function MC(params::AbstractDict)
     n1 = params[:n1]
@@ -116,25 +117,32 @@ function MC(params::AbstractDict)
     N_down = params[:N_down]
     link_in = get(params, :link_in, pi_link_in)
     link_inter = get(params, :link_inter, pi_link_inter)
-    Ham = Hamiltonian(
-        N_up,
-        N_down,
-        lat;
-        link_in = link_in,
-        link_inter = link_inter,
-        B = B,
-    )
+    Ham = Hamiltonian(N_up, N_down, lat; link_in = link_in, link_inter = link_inter, B = B)
     ns = n1 * n2 * 3
     kappa_up = zeros(Int, ns)
     kappa_down = zeros(Int, ns)
     W_up = zeros(eltype(Ham.U_up), ns, N_up)
     W_down = zeros(eltype(Ham.U_down), ns, N_down)
 
-    # Initialize caches
-    W_up_col_cache = Vector{ComplexF64}(undef, ns)
-    W_up_row_cache = Vector{ComplexF64}(undef, N_up)
-    W_down_col_cache = Vector{ComplexF64}(undef, ns)
-    W_down_row_cache = Vector{ComplexF64}(undef, N_down)
+    return MC(Ham, kappa_up, kappa_down, W_up, W_down)
+end
+
+"""
+    MC(Ham, kappa_up, kappa_down, W_up, W_down)
+------------
+Create a Monte Carlo object from its core components.
+This constructor automatically creates the necessary cache arrays.
+It's useful for internal logic and testing.
+"""
+function MC(
+    Ham::Hamiltonian,
+    kappa_up::Vector{Int},
+    kappa_down::Vector{Int},
+    W_up::AbstractMatrix,
+    W_down::AbstractMatrix,
+)
+    ns, N_up = size(W_up)
+    _, N_down = size(W_down)
 
     return MC(
         Ham,
@@ -142,10 +150,10 @@ function MC(params::AbstractDict)
         kappa_down,
         W_up,
         W_down,
-        W_up_col_cache,
-        W_up_row_cache,
-        W_down_col_cache,
-        W_down_row_cache,
+        zeros(ComplexF64, ns),      # W_up_col_cache
+        zeros(ComplexF64, N_up),     # W_up_row_cache
+        zeros(ComplexF64, ns),      # W_down_col_cache
+        zeros(ComplexF64, N_down),   # W_down_row_cache
     )
 end
 
