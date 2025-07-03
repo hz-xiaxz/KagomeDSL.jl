@@ -110,12 +110,20 @@ function MC(params::AbstractDict)
     PBC = params[:PBC]
     antiPBC = get(params, :antiPBC, (false, false))
     lat_type = get(params, :lattice, DoubleKagome)
+    B = get(params, :B, 0.0)
     lat = lat_type(1.0, n1, n2, PBC; antiPBC = antiPBC)
     N_up = params[:N_up]
     N_down = params[:N_down]
     link_in = get(params, :link_in, pi_link_in)
     link_inter = get(params, :link_inter, pi_link_inter)
-    Ham = Hamiltonian(N_up, N_down, lat; link_in = link_in, link_inter = link_inter)
+    Ham = Hamiltonian(
+        N_up,
+        N_down,
+        lat;
+        link_in = link_in,
+        link_inter = link_inter,
+        B = B,
+    )
     ns = n1 * n2 * 3
     kappa_up = zeros(Int, ns)
     kappa_down = zeros(Int, ns)
@@ -388,14 +396,16 @@ matrices, a warning is issued and the simulation continues.
     else
         mc.W_up[i, l_up] * mc.W_down[site, l_down]
     end
-    if ratio^2 >= 1 && r < Zmu / Zmax
-        update_configurations!(mc, flag, i, site, l_up, l_down)
-        measure!(ctx, :acc, 1.0)
-    elseif ratio^2 < 1 && r < (Zmu / Zmax) * ratio^2
-        update_configurations!(mc, flag, i, site, l_up, l_down)
-        measure!(ctx, :acc, 1.0)
-    else
-        measure!(ctx, :acc, 0.0)
+    let acc_prob = abs2(ratio)
+        if acc_prob >= 1 && r < Zmu / Zmax
+            update_configurations!(mc, flag, i, site, l_up, l_down)
+            measure!(ctx, :acc, 1.0)
+        elseif acc_prob < 1 && r < (Zmu / Zmax) * acc_prob
+            update_configurations!(mc, flag, i, site, l_up, l_down)
+            measure!(ctx, :acc, 1.0)
+        else
+            measure!(ctx, :acc, 0.0)
+        end
     end
 
     # Re-evaluate W matrices periodically

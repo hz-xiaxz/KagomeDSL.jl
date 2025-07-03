@@ -99,18 +99,28 @@ function apply_boundary_conditions!(
     s1::Int,
     s2::Int,
     link_inter::Dict,
+    B::Float64,
 )
     cell1 = (s1 - 1) ÷ 6 + 1
     cell2 = (s2 - 1) ÷ 6 + 1
-    # Handle in-cell cases
-    @assert cell1 != cell2 "s1 and s2 should not be in the same cell, got: $cell1 and $cell2"
+    @assert cell1 != cell2 "s1 and s2 should not be in the same cell"
     label1 = (s1 - 1) % 6 + 1
     label2 = (s2 - 1) % 6 + 1
     shifts = get_boundary_shifts(lat, s1, s2)
-    # check if the bond is linked
+
+    r1 = get_site_coord(lat, s1)
+    r_uc_1 = unitcell_coord(lat, s1)
+    dr_2 = get_site_coord(lat, s2) - unitcell_coord(lat, s2)
+    # note the phase is always calulated with one single bond
     for (dx, dy, sign) in shifts
         if haskey(link_inter, (label1, label2, dx, dy))
-            tunneling[s1, s2] += sign * link_inter[(label1, label2, dx, dy)]
+            r_uc_2_real = r_uc_1 + dx * lat.a1 + dy * lat.a2
+            r2_real = r_uc_2_real + dr_2
+
+            peierls_phase = (B / 2) * (r1[1] + r2_real[1]) * (r2_real[2] - r1[2])
+            hopping_value = exp(im * peierls_phase)
+
+            tunneling[s1, s2] += sign * link_inter[(label1, label2, dx, dy)] * hopping_value
         end
     end
 end
@@ -146,31 +156,60 @@ const pi_link_inter = Dict(
     (5, 3, 1, -1) => -1,
 )
 
-"""
-    Hmat(lat::DoubleKagome) -> Matrix{Float64}
+function get_site_coord(lat::AbstractLattice, s::Int)
+    label = (s - 1) % 6
+    uc_coord = unitcell_coord(lat, s)
+    return uc_coord + lat.r[label+1]
+end
 
-Return the Spinor Hamiltonian matrix for a DoubleKagome lattice.
 """
-function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inter)
+    Hmat(
+        lat::DoubleKagome;
+        link_in = pi_link_in,
+        link_inter = pi_link_inter,
+        B = 0.0,
+    ) -> Matrix{ComplexF64}
+
+Constructs the Spinon Hamiltonian matrix for a `DoubleKagome` lattice.
+
+This function calculates the hopping terms within and between unit cells, incorporating
+a Peierls phase to account for a magnetic field `B`. The resulting matrix
+represents the Hamiltonian of the system.
+
+# Arguments
+- `lat::DoubleKagome`: The lattice structure for which to construct the Hamiltonian.
+- `link_in`: A dictionary defining in-cell hopping terms. Defaults to `pi_link_in`.
+- `link_inter`: A dictionary defining inter-cell hopping terms. Defaults to `pi_link_inter`.
+- `B::Float64`: The magnetic field strength, used to calculate the Peierls phase. Defaults to `0.0`.
+
+# Returns
+- `Matrix{ComplexF64}`: The Hamiltonian matrix for the given lattice and parameters.
+"""
+function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inter, B = 0.0)
     n1 = lat.n1
     n2 = lat.n2
     ns = n1 * n2 * 3
 
-    tunneling = zeros(Float64, ns, ns)
+    tunneling = zeros(ComplexF64, ns, ns)
 
-
+    # in cell case
     for cell1 = 1:(n1*n2÷2)
         sites1 = ((cell1-1)*6+1):(cell1*6)
         for s1 in sites1, s2 in sites1
             s1 >= s2 && continue
-            # s1 and s2 are in the same cell, so we only need to check link_in
             label1 = (s1 - 1) % 6 + 1
             label2 = (s2 - 1) % 6 + 1
             if haskey(link_in, (label1, label2))
-                tunneling[s1, s2] = link_in[(label1, label2)]
+                r1 = get_site_coord(lat, s1)
+                r2 = get_site_coord(lat, s2)
+                peierls_phase = (B / 2) * (r1[1] + r2[1]) * (r2[2] - r1[2])
+                hopping_value = exp(im * peierls_phase)
+                tunneling[s1, s2] = link_in[(label1, label2)] * hopping_value
             end
         end
     end
+
+    # inter-cell case
     for cell1 = 1:(n1*n2÷2)
         sites1 = ((cell1-1)*6+1):(cell1*6)
         for cell2 = 1:(n1*n2÷2)
@@ -178,7 +217,7 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
             cell1 == cell2 && continue
             for s1 in sites1, s2 in sites2
                 s1 >= s2 && continue
-                apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+                apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, B)
             end
         end
     end
@@ -191,27 +230,29 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
         end
     end
     return -(tunneling + tunneling')
-    # Seems like the sign of tunneling is opposite to the one in the paper
+    # from the sign of `-t`
 end
 
 # temporarily separate the N_up and N_down subspaces
-function orbitals(H_mat::Matrix{Float64}, N_up::Int, N_down::Int)
-    search_num = max(N_up, N_down)
+function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
+    # search_num = max(N_up, N_down)
     # get sampling ensemble U_up and U_down
-    decomp, history =
-        ArnoldiMethod.partialschur(H_mat, nev = search_num, tol = 1e-14, which = :SR)
+    F = eigen(Hermitian(H_mat))
+    p = sortperm(F.values)
+    evalues = F.values[p]
+    evecs = F.vectors[:, p]
     # select N lowest eigenvectors as the sampling ensemble
-    U_up = decomp.Q[:, 1:N_up]
-    U_down = decomp.Q[:, 1:N_down]
+    U_up = evecs[:, 1:N_up]
+    U_down = evecs[:, 1:N_down]
     return U_up, U_down
 end
 
 struct Hamiltonian
     N_up::Int
     N_down::Int
-    U_up::Matrix{Float64}
-    U_down::Matrix{Float64}
-    H_mat::Matrix{Float64}
+    U_up::Matrix{ComplexF64}
+    U_down::Matrix{ComplexF64}
+    H_mat::Matrix{ComplexF64}
     nn::AbstractArray
 end
 
@@ -228,8 +269,9 @@ function Hamiltonian(
     lat::T;
     link_in = pi_link_in,
     link_inter = pi_link_inter,
+    B = 0.0,
 ) where {T<:AbstractLattice}
-    H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter)
+    H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = get_nn(H_mat)
     return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)

@@ -12,9 +12,9 @@ using Random
     @test H[1, 2] == -1
     @test H[1, 3] == -1
     for i = 4:36
-        @test H[1, i] == 0
+        @test H[1, i] ≈ 0
     end
-    @test H[3, 13] == 1
+    @test H[3, 13] ≈ 1
 
     DK2 = KagomeDSL.DoubleKagome(1.0, 4, 3, (true, false))
     H2 = KagomeDSL.Hmat(DK2)
@@ -332,7 +332,7 @@ end
 @testset "apply_boundary_conditions!" begin
     @testset "Basic boundary conditions" begin
         n1, n2 = 4, 3  # n1 must be even for DoubleKagome
-        ns = n1 * n2 * 6  # 6 sites per unit cell
+        ns = n1 * n2 * 3 * 2 # 6 sites per unit cell
 
         # Define test cases with different boundary conditions
         test_cases = [
@@ -364,8 +364,8 @@ end
                 lat = DoubleKagome(1.0, n1, n2, PBC; antiPBC = antiPBC)
 
                 for (s1, s2, expected) in tests
-                    tunneling = zeros(Float64, ns, ns)
-                    apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+                    tunneling = zeros(ComplexF64, ns, ns)
+                    apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, 0.0)
                     @test tunneling[s1, s2] ≈ expected
                 end
             end
@@ -379,9 +379,9 @@ end
 
         # Test diagonal crossings
         link_inter = Dict((1, 6, -1, -1) => 1.0)
-        tunneling = zeros(Float64, ns, ns)
+        tunneling = zeros(ComplexF64, ns, ns)
         s1, s2 = 1, ns
-        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, 0.0)
         @test tunneling[s1, s2] ≈ 1.0  # Signs cancel for diagonal crossing
     end
 
@@ -393,9 +393,9 @@ end
 
         # Test non-existent bonds
         link_inter = Dict((1, 5, 1, 0) => 1.0)
-        tunneling = zeros(Float64, ns, ns)
+        tunneling = zeros(ComplexF64, ns, ns)
         s1, s2 = 1, 7  # Sites that don't have a defined bond
-        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, 0.0)
         @test tunneling[s1, s2] ≈ 0.0  # No bond should be added
     end
 
@@ -403,33 +403,36 @@ end
         n1, n2 = 4, 3
         ns = n1 * n2 * 3
         lat = DoubleKagome(1.0, n1, n2, (true, true))
-        tunneling = zeros(Float64, ns, ns)
+        tunneling = zeros(ComplexF64, ns, ns)
         link_inter = Dict((1, 5, -1, 0) => 1.0)
 
         # Test same cell error
         s1, s2 = 1, 2  # Same unit cell
-        @test_throws AssertionError apply_boundary_conditions!(
+        @test_throws AssertionError KagomeDSL.apply_boundary_conditions!(
             tunneling,
             lat,
             s1,
             s2,
             link_inter,
+            0.0,
         )
 
         # Test invalid site indices
-        @test_throws AssertionError apply_boundary_conditions!(
+        @test_throws AssertionError KagomeDSL.apply_boundary_conditions!(
             tunneling,
             lat,
             0,
             1,
             link_inter,
+            0.0,
         )
-        @test_throws AssertionError apply_boundary_conditions!(
+        @test_throws AssertionError KagomeDSL.apply_boundary_conditions!(
             tunneling,
             lat,
             1,
             ns + 1,
             link_inter,
+            0.0,
         )
     end
 end
@@ -439,7 +442,7 @@ end
         n1, n2 = 4, 3  # n1 must be even for DoubleKagome
         ns = n1 * n2 * 3
         lat = DoubleKagome(1.0, n1, n2, (true, true); antiPBC = (true, false))
-        tunneling = zeros(Float64, ns, ns)
+        tunneling = zeros(ComplexF64, ns, ns)
 
         # Example link dictionaries
         link_in = Dict((1, 2) => 1.0, (2, 1) => 1.0)
@@ -448,9 +451,9 @@ end
 
 
         # Test inter-cell tunneling with antiperiodic BC
-        tunneling = zeros(Float64, ns, ns)
+        tunneling = zeros(ComplexF64, ns, ns)
         s1, s2 = 1, 11
-        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter)
+        apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, 0.0)
 
         # Check if crossing boundary in first direction gives negative sign
         boundary_cross = true
@@ -694,5 +697,79 @@ end
         s1, s2 = 3, 6 * (n1 ÷ 2 - 1) + 3  # First and last cell
         shifts = get_boundary_shifts(lat, s1, s2)
         @test any(abs(s[1]) == n1 ÷ 2 + 1 for s in shifts)  # Should use halved n1
+    end
+end
+
+@testset "get_site_coord" begin
+    lat = DoubleKagome(1.0, 4, 3, (false, false))
+
+    # Test site 1 (origin of first unit cell)
+    @test KagomeDSL.get_site_coord(lat, 1) == [0.0, 0.0]
+
+    # Test site 2
+    @test KagomeDSL.get_site_coord(lat, 2) == [1.0, 0.0]
+
+    # Test site 3
+    @test KagomeDSL.get_site_coord(lat, 3) == [0.5, 0.5 * sqrt(3.0)]
+
+    # Test site 7 (first site of the next unit cell in a1 direction)
+    @test KagomeDSL.get_site_coord(lat, 7) == [4.0, 0.0]
+
+    # Test site 13 (first site of the next unit cell in a2 direction)
+    @test KagomeDSL.get_site_coord(lat, 13) == [1.0, sqrt(3.0)]
+end
+
+@testset "Magnetic Field" begin
+    DK = DoubleKagome(1.0, 4, 3, (false, false))
+    B = 0.1
+    H_B = KagomeDSL.Hmat(DK; B = B)
+    H_0 = KagomeDSL.Hmat(DK; B = 0.0)
+
+    @testset "Hermiticity" begin
+        @test H_B ≈ H_B'
+    end
+
+    @testset "Zero Field Limit" begin
+        @test H_0 == KagomeDSL.Hmat(DK)
+    end
+
+    @testset "Phase Correctness (in-cell)" begin
+        # Test a bond with non-zero phase
+        s1, s2 = 1, 3
+        r1 = KagomeDSL.get_site_coord(DK, s1)
+        r2 = KagomeDSL.get_site_coord(DK, s2)
+        phase = (B / 2) * (r1[1] + r2[1]) * (r2[2] - r1[2])
+        @test H_B[s1, s2] == -exp(im * phase)
+
+        # Test a bond with zero phase
+        s1, s2 = 1, 2
+        r1 = KagomeDSL.get_site_coord(DK, s1)
+        r2 = KagomeDSL.get_site_coord(DK, s2)
+        phase = (B / 2) * (r1[1] + r2[1]) * (r2[2] - r1[2])
+        @test phase == 0.0
+        @test H_B[s1, s2] == -1.0
+    end
+
+    @testset "Phase Correctness (inter-cell, no PBC)" begin
+        s1, s2 = 3, 13
+        r1 = KagomeDSL.get_site_coord(DK, s1)
+        r2 = KagomeDSL.get_site_coord(DK, s2)
+        phase = (B / 2) * (r1[1] + r2[1]) * (r2[2] - r1[2])
+        @test H_B[s1, s2] == -KagomeDSL.pi_link_inter[(3, 1, 0, 1)] * exp(im * phase)
+    end
+
+    @testset "Phase Correctness (PBC)" begin
+        DK_pbc = DoubleKagome(1.0, 4, 3, (true, true))
+        H_B_pbc = KagomeDSL.Hmat(DK_pbc; B = B)
+        s1, s2 = 1, 11
+        r1 = KagomeDSL.get_site_coord(DK_pbc, s1)
+        r2 = KagomeDSL.get_site_coord(DK_pbc, s2)
+        # This is a bond that wraps around the x-boundary
+        # The shift corresponds to dx_uc = 1, but with PBC, one image is at dx = 1 - n1/2 = -1
+        pbc_shift_vec = -(DK_pbc.n1 ÷ 2) * DK_pbc.a1
+        r2_real = r2 + pbc_shift_vec
+        phase = (B / 2) * (r1[1] + r2_real[1]) * (r2_real[2] - r1[2])
+        link_val = KagomeDSL.pi_link_inter[(1, 5, -1, 0)]
+        @test H_B_pbc[s1, s2] == -link_val * exp(im * phase)
     end
 end

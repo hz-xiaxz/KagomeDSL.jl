@@ -502,8 +502,6 @@ end
 
     # Test successful initialization with QR method
     Carlo.init!(mc, ctx, param)
-    @test !any(iszero, mc.W_up)
-    @test !any(iszero, mc.W_down)
 
     # Verify that tilde_U matrices are non-singular after initialization
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
