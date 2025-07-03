@@ -24,29 +24,6 @@ function reevaluateW!(mc::MC)
     return nothing
 end
 
-function init_conf(rng::AbstractRNG, ns::Int, N_up::Int)
-    # dealing with conf_up
-    # Initialize array with zeros
-    kappa_up = zeros(Int, ns)
-
-    # Generate random positions for 1:N_up
-    positions = randperm(rng, ns)[1:N_up]
-
-    # Place 1:N_up at the random positions
-    for (i, pos) in enumerate(positions)
-        kappa_up[pos] = i
-    end
-    kappa_down = zeros(Int, ns)
-    # kappa_down should occupy the rest of the sites
-    res_pos = randperm(rng, ns - N_up)
-    for i = 1:ns
-        if kappa_up[i] == 0
-            kappa_down[i] = pop!(res_pos)
-        end
-    end
-
-    return kappa_up, kappa_down
-end
 
 """
     tilde_U(U::AbstractMatrix, kappa::Vector{Int})
