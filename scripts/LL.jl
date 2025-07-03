@@ -18,13 +18,12 @@ ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, true)
 tm.antiPBC = (false, true)
 tm.lattice = DoubleKagome
-imbalances = [8]
+imbalances = [0, 8, 16, 32, 40, 56]
 for imbalance in imbalances
-    B0 = imbalance * π / (tm.n1 * tm.n2 * (2√3)) /2
+    B0 = imbalance * π / (tm.n1 * tm.n2 * (2√3)) / 2
     tm.B = B0
     tm.imbalance = imbalance
-    task(tm; N_up = ns ÷ 2 + imbalance ÷ 2, N_down = ns ÷ 2 - imbalance ÷ 2)
-    # task(tm; N_up = ns ÷ 2, N_down = ns ÷ 2)
+    task(tm; N_up = ns ÷ 2, N_down = ns ÷ 2)
 end
 
 dir = @__DIR__
