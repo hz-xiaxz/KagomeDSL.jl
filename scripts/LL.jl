@@ -10,7 +10,7 @@ using ArnoldiMethod
 
 tm = TaskMaker()
 tm.thermalization = 5000
-tm.sweeps = 100_000
+tm.sweeps = 5_000_000
 tm.binsize = 2
 tm.n1 = 16
 tm.n2 = 16
@@ -20,16 +20,16 @@ tm.antiPBC = (false, true)
 tm.lattice = DoubleKagome
 imbalances = [8]
 for imbalance in imbalances
-    B0 = imbalance * π / (tm.n1 * tm.n2 * (2√3))
+    B0 = imbalance * π / (tm.n1 * tm.n2 * (2√3)) /2
     tm.B = B0
     tm.imbalance = imbalance
-    # task(tm; N_up = ns ÷ 2 + imbalance ÷ 2, N_down = ns ÷ 2 - imbalance ÷ 2)
-    task(tm; N_up = ns ÷ 2, N_down = ns ÷ 2)
+    task(tm; N_up = ns ÷ 2 + imbalance ÷ 2, N_down = ns ÷ 2 - imbalance ÷ 2)
+    # task(tm; N_up = ns ÷ 2, N_down = ns ÷ 2)
 end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "LLnoimb-$(tm.n1)x$(tm.n2)"
+savepath = dir * "/../data/" * "LL-$(tm.n1)x$(tm.n2)"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
