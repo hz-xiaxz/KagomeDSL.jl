@@ -4,6 +4,7 @@ using StatsBase
 using Random
 using Carlo
 using HDF5
+import LinearAlgebra.BLAS: geru!
 
 export DoubleKagome
 include("Lattice.jl")
