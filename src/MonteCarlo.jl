@@ -5,10 +5,10 @@ mutable struct MC <: AbstractMC
     W_up::AbstractMatrix
     W_down::AbstractMatrix
     # Caches for zero-allocation updates
-    W_up_col_cache::Vector{ComplexF64}
-    W_up_row_cache::Vector{ComplexF64}
-    W_down_col_cache::Vector{ComplexF64}
-    W_down_row_cache::Vector{ComplexF64}
+    W_up_col_cache::AbstractVector
+    W_up_row_cache::AbstractVector
+    W_down_col_cache::AbstractVector
+    W_down_row_cache::AbstractVector
 end
 
 function reevaluateW!(mc::MC)
@@ -142,7 +142,7 @@ function MC(
     W_down::AbstractMatrix,
 )
     ns, N_up = size(W_up)
-    _, N_down = size(W_down)
+    N_down = ns - N_up
 
     return MC(
         Ham,
@@ -150,10 +150,10 @@ function MC(
         kappa_down,
         W_up,
         W_down,
-        zeros(ComplexF64, ns),      # W_up_col_cache
-        zeros(ComplexF64, N_up),     # W_up_row_cache
-        zeros(ComplexF64, ns),      # W_down_col_cache
-        zeros(ComplexF64, N_down),   # W_down_row_cache
+        zeros(eltype(W_up), ns),      # W_up_col_cache
+        zeros(eltype(W_up), N_up),     # W_up_row_cache
+        zeros(eltype(W_down), ns),      # W_down_col_cache
+        zeros(eltype(W_down), N_down),   # W_down_row_cache
     )
 end
 
@@ -180,23 +180,11 @@ function update_W!(
     col_cache::AbstractVector,
     row_cache::AbstractVector,
 )
-    inv_WKL = inv(W[K, l])
-
     copyto!(row_cache, view(W, K, :))
     row_cache[l] -= 1.0
     copyto!(col_cache, view(W, :, l))
-
-    rows, cols = axes(W)
-
-    @inbounds for j in cols
-        scalar_Krow_j = row_cache[j]
-        if scalar_Krow_j != 0
-            @simd for i in rows
-                factor_i = col_cache[i] * inv_WKL
-                W[i, j] -= factor_i * scalar_Krow_j
-            end
-        end
-    end
+    alpha = -one(eltype(W)) / W[K, l]
+    LinearAlgebra.BLAS.geru!(alpha, col_cache, row_cache, W)
     return nothing
 end
 
