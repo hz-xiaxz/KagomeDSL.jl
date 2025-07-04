@@ -23,8 +23,8 @@ AutoIncludeTests: true
 CheckExplicitImports: false
 ConfigIndentation: 2
 JuliaIndentation: 4
-JuliaMinCIVersion: lts
-JuliaMinVersion: '1.10'
+JuliaMinCIVersion: '1.11'
+JuliaMinVersion: '1.11'
 License: MIT
 LicenseCopyrightHolders: hzxiaxz
 MarkdownIndentation: 2
@@ -33,7 +33,7 @@ PackageOwner: hz-xiaxz
 PackageUUID: d7336a9d-6a7f-533d-babd-3df937e6f042
 RunJuliaNightlyOnCI: false
 StrategyConfirmIncluded: true
-StrategyLevel: 0
+StrategyLevel: 1
 StrategyReviewExcluded: true
 UseCirrusCI: false
 _commit: v0.16.2
