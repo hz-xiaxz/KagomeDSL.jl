@@ -120,6 +120,9 @@ function MC(
 )
     ns, N_up = size(W_up)
     _, N_down = size(W_down)
+    @assert ns != 0
+    @assert N_up != 0
+    @assert N_down != 0
 
 
     return MC(
