@@ -119,8 +119,10 @@ function MC(
     W_down::AbstractMatrix,
 )
     ns, N_up = size(W_up)
-    N_down = ns - N_up
-
+    _, N_down = size(W_down)
+    @assert ns != 0
+    @assert N_up != 0
+    @assert N_down != 0
 
 
     return MC(

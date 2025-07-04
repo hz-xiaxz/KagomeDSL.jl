@@ -49,31 +49,6 @@ end
             @test abs(det(tilde_U_down)) > eps(Float64)
         end
     end
-
-    @testset "Edge cases for init_conf_qr!" begin
-        ns = 10
-        # N_up = 0
-        U_up_mock_0 = rand(ns, 0)
-        U_down_mock_0 = rand(ns, ns)
-        mock_ham_0 = Hamiltonian(0, ns, U_up_mock_0, U_down_mock_0, zeros(ns, ns), [])
-        mc_0 = MC(mock_ham_0, zeros(Int, ns), zeros(Int, ns), zeros(ns, 0), zeros(ns, ns))
-        KagomeDSL.init_conf_qr!(mc_0, ns, 0)
-        @test all(iszero, mc_0.kappa_up)
-        @test count(!iszero, mc_0.kappa_down) == ns
-        tilde_U_down_0 = tilde_U(mc_0.Ham.U_down, mc_0.kappa_down)
-        @test abs(det(tilde_U_down_0)) > eps(Float64)
-
-        # N_up = ns
-        U_up_mock_ns = rand(ns, ns)
-        U_down_mock_ns = rand(ns, 0)
-        mock_ham_ns = Hamiltonian(ns, 0, U_up_mock_ns, U_down_mock_ns, zeros(ns, ns), [])
-        mc_ns = MC(mock_ham_ns, zeros(Int, ns), zeros(Int, ns), zeros(ns, ns), zeros(ns, 0))
-        KagomeDSL.init_conf_qr!(mc_ns, ns, ns)
-        @test count(!iszero, mc_ns.kappa_up) == ns
-        @test all(iszero, mc_ns.kappa_down)
-        tilde_U_up_ns = tilde_U(mc_ns.Ham.U_up, mc_ns.kappa_up)
-        @test abs(det(tilde_U_up_ns)) > eps(Float64)
-    end
 end
 
 @testset "tilde_U tests" begin
