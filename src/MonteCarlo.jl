@@ -4,11 +4,6 @@ mutable struct MC <: AbstractMC
     kappa_down::Vector{Int}
     W_up::AbstractMatrix
     W_down::AbstractMatrix
-    # Caches for zero-allocation updates
-    W_up_col_cache::Vector{ComplexF64}
-    W_up_row_cache::Vector{ComplexF64}
-    W_down_col_cache::Vector{ComplexF64}
-    W_down_row_cache::Vector{ComplexF64}
 end
 
 function reevaluateW!(mc::MC)
@@ -79,8 +74,7 @@ end
 """
     MC(params::AbstractDict)
 ------------
-Create a Monte Carlo object from a dictionary of parameters.
-This is the user-facing, high-level constructor.
+Create a Monte Carlo object
 """
 function MC(params::AbstractDict)
     n1 = params[:n1]
@@ -94,44 +88,20 @@ function MC(params::AbstractDict)
     N_down = params[:N_down]
     link_in = get(params, :link_in, pi_link_in)
     link_inter = get(params, :link_inter, pi_link_inter)
-    Ham = Hamiltonian(N_up, N_down, lat; link_in = link_in, link_inter = link_inter, B = B)
+    Ham = Hamiltonian(
+        N_up,
+        N_down,
+        lat;
+        link_in = link_in,
+        link_inter = link_inter,
+        B = B,
+    )
     ns = n1 * n2 * 3
     kappa_up = zeros(Int, ns)
     kappa_down = zeros(Int, ns)
     W_up = zeros(eltype(Ham.U_up), ns, N_up)
     W_down = zeros(eltype(Ham.U_down), ns, N_down)
-
     return MC(Ham, kappa_up, kappa_down, W_up, W_down)
-end
-
-"""
-    MC(Ham, kappa_up, kappa_down, W_up, W_down)
-------------
-Create a Monte Carlo object from its core components.
-This constructor automatically creates the necessary cache arrays.
-It's useful for internal logic and testing.
-"""
-function MC(
-    Ham::Hamiltonian,
-    kappa_up::Vector{Int},
-    kappa_down::Vector{Int},
-    W_up::AbstractMatrix,
-    W_down::AbstractMatrix,
-)
-    ns, N_up = size(W_up)
-    _, N_down = size(W_down)
-
-    return MC(
-        Ham,
-        kappa_up,
-        kappa_down,
-        W_up,
-        W_down,
-        zeros(ComplexF64, ns),      # W_up_col_cache
-        zeros(ComplexF64, N_up),     # W_up_row_cache
-        zeros(ComplexF64, ns),      # W_down_col_cache
-        zeros(ComplexF64, N_down),   # W_down_row_cache
-    )
 end
 
 """
@@ -140,8 +110,8 @@ end
 Update the W matrices
 """
 function update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
-    update_W!(mc.W_up, l_up, K_up, mc.W_up_col_cache, mc.W_up_row_cache)
-    update_W!(mc.W_down, l_down, K_down, mc.W_down_col_cache, mc.W_down_row_cache)
+    update_W!(mc.W_up; l = l_up, K = K_up)
+    update_W!(mc.W_down; l = l_down, K = K_down)
 end
 
 """
@@ -150,29 +120,12 @@ end
 Update the W matrix
 ``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
 """
-function update_W!(
-    W::AbstractMatrix,
-    l::Int,
-    K::Int,
-    col_cache::AbstractVector,
-    row_cache::AbstractVector,
-)
-    inv_WKL = inv(W[K, l])
-
-    copyto!(row_cache, view(W, K, :))
-    row_cache[l] -= 1.0
-    copyto!(col_cache, view(W, :, l))
-
-    rows, cols = axes(W)
-
-    @inbounds for j in cols
-        scalar_Krow_j = row_cache[j]
-        if scalar_Krow_j != 0
-            @simd for i in rows
-                factor_i = col_cache[i] * inv_WKL
-                W[i, j] -= factor_i * scalar_Krow_j
-            end
-        end
+function update_W!(W::AbstractMatrix; l::Int, K::Int)
+    factors = W[:, l] ./ W[K, l]
+    Krow = copy(W[K, :])
+    Krow[l] -= 1.0
+    @views for j in axes(W, 2)
+        W[:, j] .-= factors .* Krow[j]
     end
     return nothing
 end
@@ -267,9 +220,7 @@ function find_initial_configuration!(mc::MC, ns::Int, N_up::Int)
         return # Success
     catch e
         if e isa SingularException || e isa LinearAlgebra.LAPACKException
-            error(
-                "QR-based configuration is singular. The Hamiltonian may be rank-deficient.",
-            )
+            error("QR-based configuration is singular. The Hamiltonian may be rank-deficient.")
         else
             rethrow(e)
         end

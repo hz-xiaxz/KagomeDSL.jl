@@ -7,7 +7,7 @@ using HDF5
 
 @testset "MC" begin
     param = Dict(:n1 => 4, :n2 => 3, :PBC => (true, false), :N_up => 18, :N_down => 18)
-    test_mc = KagomeDSL.MC(param)
+    test_mc = MC(param)
     # kappa_up and kappa_down are initialized in Carlo.init!, so we don't check their lengths here.
 end
 
@@ -263,9 +263,7 @@ end
         W_original = copy(W)
 
         # Test update with l=1, K=2
-        col_cache = Vector{ComplexF64}(undef, size(W, 1))
-        row_cache = Vector{ComplexF64}(undef, size(W, 2))
-        update_W!(W, 1, 2, col_cache, row_cache)
+        update_W!(W; l = 1, K = 2)
 
         # Verify elements manually
         factor = W[1, 1] / W[2, 1]
@@ -278,7 +276,7 @@ end
 
     @testset "update_W! matrix properties" begin
         n = 4
-        W = Matrix{ComplexF64}(I, n, n) + 0.1 * rand(n, n)
+        W = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
         W = (W + W') / 2  # Make symmetric
         W_original = copy(W)
 
@@ -288,9 +286,8 @@ end
         while K == l  # Ensure K ≠ l
             K = rand(1:n)
         end
-        col_cache = Vector{ComplexF64}(undef, size(W, 1))
-        row_cache = Vector{ComplexF64}(undef, size(W, 2))
-        update_W!(W, l, K, col_cache, row_cache)
+
+        update_W!(W; l = l, K = K)
 
         # Test matrix dimensions preserved
         @test size(W) == size(W_original)
@@ -310,7 +307,7 @@ end
 
         # Create mock MC struct with necessary fields
         mc = MC(
-            Hamiltonian(n, n, zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
+            Hamiltonian(1, 1, zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
             zeros(Int, n),
             zeros(Int, n),
             copy(W_up),
@@ -343,24 +340,15 @@ end
         W = [1.0 1e-10; 1e-10 1.0]
 
         # Should handle small values without producing NaN/Inf
-        col_cache = Vector{ComplexF64}(undef, size(W, 1))
-        row_cache = Vector{ComplexF64}(undef, size(W, 2))
-        update_W!(W, 1, 2, col_cache, row_cache)
+        update_W!(W; l = 1, K = 2)
         @test !any(isnan, W)
         @test !any(isinf, W)
 
         # Test with larger matrix containing small values
         n = 5
         W = Matrix{Float64}(I, n, n) + 1e-10 * rand(n, n)
-        rng = Random.Xoshiro(42)  # Fixed seed for reproducibility
-        l = rand(rng, 1:n)
-        K = rand(rng, 1:n)
-        while K == l
-            K = rand(rng, 1:n)
-        end
-        col_cache = Vector{ComplexF64}(undef, size(W, 1))
-        row_cache = Vector{ComplexF64}(undef, size(W, 2))
-        update_W!(W, l, K, col_cache, row_cache)
+
+        update_W!(W; l = 1, K = 2)
         @test !any(isnan, W)
         @test !any(isinf, W)
     end
@@ -379,29 +367,14 @@ end
 @testset "update_configurations!" begin
     # Setup initial MC state
     n = 4
-    N_up = 2
-    N_down = 2
-    W_up = Matrix{ComplexF64}(undef, n, N_up)
-    W_down = Matrix{ComplexF64}(undef, n, N_down)
-    W_up .= 1.0 + 0.0im
-    W_down .= 1.0 + 0.0im
+    W_up = Matrix{Float64}(I, n, n)
+    W_down = Matrix{Float64}(I, n, n)
     mc = MC(
-        Hamiltonian(
-            N_up,
-            N_down,
-            zeros(ComplexF64, n, N_up),
-            zeros(ComplexF64, n, N_down),
-            zeros(ComplexF64, n, n),
-            Tuple{Int,Int}[],
-        ),
+        Hamiltonian(2, 2, W_up, W_down, zeros(n^2, n^2), []),
         [1, 0, 2, 0],
         [0, 1, 0, 2],
         copy(W_up),
         copy(W_down),
-        Vector{ComplexF64}(undef, n),
-        Vector{ComplexF64}(undef, N_up),
-        Vector{ComplexF64}(undef, n),
-        Vector{ComplexF64}(undef, N_down),
     )
 
     @testset "flag = 1" begin
@@ -464,41 +437,16 @@ end
     U_up_singular = repeat(U_up_singular, ns, 1) # Repeat it for all ns rows
 
     # Create a mock Hamiltonian with the singular U_up
-    mock_ham_singular = Hamiltonian(
-        N_up,
-        N_down,
-        U_up_singular,
-        rand(ns, N_down),
-        zeros(ComplexF64, ns, ns),
-        Tuple{Int,Int}[],
-    )
+    mock_ham_singular = Hamiltonian(N_up, N_down, U_up_singular, rand(ns, N_down), zeros(ns, ns), [])
 
-    mc_singular = MC(
-        mock_ham_singular,
-        zeros(Int, ns),
-        zeros(Int, ns),
-        zeros(ns, N_up),
-        zeros(ns, N_down),
-    )
+    mc_singular = MC(mock_ham_singular, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
 
     ctx_singular = Carlo.MCContext{Random.Xoshiro}(
         Dict(:binsize => 3, :seed => 123, :thermalization => 10),
     )
 
     # Expect an error to be thrown
-    @test_throws ErrorException(
-        "QR-based configuration is singular. The Hamiltonian may be rank-deficient.",
-    ) Carlo.init!(
-        mc_singular,
-        ctx_singular,
-        Dict(
-            :n1 => n1,
-            :n2 => n2,
-            :PBC => (false, false),
-            :N_up => N_up,
-            :N_down => N_down,
-        ),
-    )
+    @test_throws ErrorException("QR-based configuration is singular. The Hamiltonian may be rank-deficient.") Carlo.init!(mc_singular, ctx_singular, Dict(:n1 => n1, :n2 => n2, :PBC => (false, false), :N_up => N_up, :N_down => N_down))
 end
 
 @testset "Carlo.sweep! and Carlo.measure!" begin
