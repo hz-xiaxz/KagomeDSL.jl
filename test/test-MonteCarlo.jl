@@ -263,8 +263,8 @@ end
         W_original = copy(W)
 
         # Test update with l=1, K=2
-        col_cache = Vector{ComplexF64}(undef, size(W, 1))
-        row_cache = Vector{ComplexF64}(undef, size(W, 2))
+        col_cache = Vector{eltype(W)}(undef, size(W, 1))
+        row_cache = Vector{eltype(W)}(undef, size(W, 2))
         update_W!(W, 1, 2, col_cache, row_cache)
 
         # Verify elements manually
@@ -343,8 +343,8 @@ end
         W = [1.0 1e-10; 1e-10 1.0]
 
         # Should handle small values without producing NaN/Inf
-        col_cache = Vector{ComplexF64}(undef, size(W, 1))
-        row_cache = Vector{ComplexF64}(undef, size(W, 2))
+        col_cache = Vector{eltype(W)}(undef, size(W, 1))
+        row_cache = Vector{eltype(W)}(undef, size(W, 2))
         update_W!(W, 1, 2, col_cache, row_cache)
         @test !any(isnan, W)
         @test !any(isinf, W)
@@ -358,8 +358,8 @@ end
         while K == l
             K = rand(rng, 1:n)
         end
-        col_cache = Vector{ComplexF64}(undef, size(W, 1))
-        row_cache = Vector{ComplexF64}(undef, size(W, 2))
+        col_cache = Vector{eltype(W)}(undef, size(W, 1))
+        row_cache = Vector{eltype(W)}(undef, size(W, 2))
         update_W!(W, l, K, col_cache, row_cache)
         @test !any(isnan, W)
         @test !any(isinf, W)
