@@ -134,7 +134,7 @@ function calculate_S_xy(mc::MC)
                     C_xy_ij += coeff * ratio
                 end
             end
-            S_xy[i, j] = C_xy_ij
+            S_xy[i, j] = real(C_xy_ij)
         end
     end
     return S_xy

@@ -1,10 +1,13 @@
 module KagomeDSL
+using MKL
 using LinearAlgebra
 using StatsBase
 using Random
 using Carlo
 using HDF5
-import LinearAlgebra.BLAS: geru!
+@info "Active BLAS vendor: $(BLAS.vendor())"
+@info "BLAS.get_config(): $(BLAS.get_config())"
+MKL.set_num_threads(1)
 
 export DoubleKagome
 include("Lattice.jl")
