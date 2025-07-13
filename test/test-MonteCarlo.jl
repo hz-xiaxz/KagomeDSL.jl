@@ -213,8 +213,13 @@ end
         )
         kappa_up = [1, 2]
         kappa_down = [2, 1]
-        mc =
-            MC(ham, kappa_up, kappa_down, zeros(ComplexF64, ns, N_up), zeros(ComplexF64, ns, N_down))
+        mc = MC(
+            ham,
+            kappa_up,
+            kappa_down,
+            zeros(ComplexF64, ns, N_up),
+            zeros(ComplexF64, ns, N_down),
+        )
 
         KagomeDSL.reevaluateW!(mc)
 
@@ -247,8 +252,13 @@ end
         )
         kappa_up = [1, 2, 0, 0]
         kappa_down = [0, 0, 1, 2]
-        mc =
-            MC(ham, kappa_up, kappa_down, zeros(ComplexF64, ns, N_up), zeros(ComplexF64, ns, N_down))
+        mc = MC(
+            ham,
+            kappa_up,
+            kappa_down,
+            zeros(ComplexF64, ns, N_up),
+            zeros(ComplexF64, ns, N_down),
+        )
 
         KagomeDSL.reevaluateW!(mc)
 
@@ -323,13 +333,7 @@ end
             zeros(ComplexF64, ns, ns),
             Tuple{Int,Int}[],
         )
-        mc = MC(
-            mock_ham,
-            zeros(Int, n),
-            zeros(Int, n),
-            copy(W_up),
-            copy(W_down),
-        )
+        mc = MC(mock_ham, zeros(Int, n), zeros(Int, n), copy(W_up), copy(W_down))
 
         # Store original matrices
         W_up_original = copy(mc.W_up)
@@ -407,7 +411,6 @@ end
         zeros(ComplexF64, n, N_down),
         zeros(ComplexF64, n, n),
         Tuple{Int,Int}[],
-        lat_mock,
     )
     mc = MC(
         ham,
