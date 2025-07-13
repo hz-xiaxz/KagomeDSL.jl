@@ -5,6 +5,12 @@ using LinearAlgebra
 using Carlo
 using HDF5
 
+struct DummyLattice <: KagomeDSL.AbstractLattice
+    ns::Int
+end
+KagomeDSL.ns(lat::DummyLattice) = lat.ns
+
+
 @testset "MC" begin
     param = Dict(:n1 => 4, :n2 => 3, :PBC => (true, false), :N_up => 18, :N_down => 18)
     test_mc = KagomeDSL.MC(param)
@@ -21,12 +27,25 @@ end
 
         # Create a mock Hamiltonian for testing
         # Ensure U_up and U_down are full rank for a non-singular tilde_U to be possible
-        U_up_mock = rand(ns, N_up)
-        U_down_mock = rand(ns, N_down)
-        mock_ham = Hamiltonian(N_up, N_down, U_up_mock, U_down_mock, zeros(ns, ns), [])
+        U_up_mock = complex(rand(ns, N_up))
+        U_down_mock = complex(rand(ns, N_down))
+        mock_ham = Hamiltonian(
+            N_up,
+            N_down,
+            U_up_mock,
+            U_down_mock,
+            zeros(ComplexF64, ns, ns),
+            Tuple{Int,Int}[],
+            DummyLattice(ns),
+        )
 
-        mc =
-            MC(mock_ham, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
+        mc = MC(
+            mock_ham,
+            zeros(Int, ns),
+            zeros(Int, ns),
+            zeros(ComplexF64, ns, N_up),
+            zeros(ComplexF64, ns, N_down),
+        )
 
         # Call the QR-based initialization
         KagomeDSL.init_conf_qr!(mc, ns, N_up)
@@ -185,12 +204,24 @@ end
 @testset "reevaluateW! tests" begin
     @testset "Basic functionality" begin
         # Create a simple 2x2 test case
-        U_up = [1.0 0.2; 0.2 1.0]
-        U_down = [1.0 0.3; 0.3 1.0]
-        ham = Hamiltonian(1, 1, U_up, U_down, zeros(4, 4), [])
+        ns = 2
+        N_up = 2
+        N_down = 2
+        U_up = complex([1.0 0.2; 0.2 1.0])
+        U_down = complex([1.0 0.3; 0.3 1.0])
+        ham = Hamiltonian(
+            N_up,
+            N_down,
+            U_up,
+            U_down,
+            zeros(ComplexF64, ns, ns),
+            Tuple{Int,Int}[],
+            DummyLattice(ns),
+        )
         kappa_up = [1, 2]
         kappa_down = [2, 1]
-        mc = MC(ham, kappa_up, kappa_down, zeros(2, 2), zeros(2, 2))
+        mc =
+            MC(ham, kappa_up, kappa_down, zeros(ComplexF64, ns, N_up), zeros(ComplexF64, ns, N_down))
 
         KagomeDSL.reevaluateW!(mc)
 
@@ -207,26 +238,31 @@ end
 
     @testset "Matrix properties" begin
         # Test with larger matrices
-        n = 4
-        U_up = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
-        U_down = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
-        U_up = (U_up + U_up') / 2  # Make symmetric
-        U_down = (U_down + U_down') / 2
+        ns = 4
+        N_up = 2
+        N_down = 2
+        U_up = rand(ComplexF64, ns, N_up)
+        U_down = rand(ComplexF64, ns, N_down)
 
-        ham = Hamiltonian(2, 2, U_up, U_down, zeros(16, 16), [])
-        kappa_up = [1, 2, 3, 4]
-        kappa_down = [4, 3, 2, 1]
-        mc = MC(ham, kappa_up, kappa_down, zeros(n, n), zeros(n, n))
+        ham = Hamiltonian(
+            N_up,
+            N_down,
+            U_up,
+            U_down,
+            zeros(ComplexF64, ns, ns),
+            Tuple{Int,Int}[],
+            DummyLattice(ns),
+        )
+        kappa_up = [1, 2, 0, 0]
+        kappa_down = [0, 0, 1, 2]
+        mc =
+            MC(ham, kappa_up, kappa_down, zeros(ComplexF64, ns, N_up), zeros(ComplexF64, ns, N_down))
 
         KagomeDSL.reevaluateW!(mc)
 
         # Test matrix dimensions
-        @test size(mc.W_up) == (n, n)
-        @test size(mc.W_down) == (n, n)
-
-        # Test symmetry preservation
-        @test isapprox(mc.W_up, mc.W_up', atol = 1e-10)
-        @test isapprox(mc.W_down, mc.W_down', atol = 1e-10)
+        @test size(mc.W_up) == (ns, N_up)
+        @test size(mc.W_down) == (ns, N_down)
     end
 
 end
@@ -234,7 +270,7 @@ end
 @testset "update_W! and update_W_matrices tests" begin
     @testset "update_W! basic functionality" begin
         # Simple 2x2 test case
-        W = [1.0 0.2; 0.2 1.0]
+        W = complex([1.0 0.2; 0.2 1.0])
         W_original = copy(W)
 
         # Test update with l=1, K=2
@@ -278,14 +314,26 @@ end
     @testset "update_W_matrices" begin
         # Create test MC object
         n = 3
-        W_up = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
-        W_down = Matrix{Float64}(I, n, n) + 0.1 * rand(n, n)
+        W_up = Matrix{ComplexF64}(I, n, n) + 0.1 * rand(ComplexF64, n, n)
+        W_down = Matrix{ComplexF64}(I, n, n) + 0.1 * rand(ComplexF64, n, n)
         W_up = (W_up + W_up') / 2
         W_down = (W_down + W_down') / 2
 
         # Create mock MC struct with necessary fields
+        ns = n
+        N_up = n
+        N_down = n
+        mock_ham = Hamiltonian(
+            N_up,
+            N_down,
+            zeros(ComplexF64, ns, N_up),
+            zeros(ComplexF64, ns, N_down),
+            zeros(ComplexF64, ns, ns),
+            Tuple{Int,Int}[],
+            DummyLattice(ns),
+        )
         mc = MC(
-            Hamiltonian(n, n, zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
+            mock_ham,
             zeros(Int, n),
             zeros(Int, n),
             copy(W_up),
@@ -315,7 +363,7 @@ end
 
     @testset "update_W! numerical stability" begin
         # Test with near-singular matrix
-        W = [1.0 1e-10; 1e-10 1.0]
+        W = complex([1.0 1e-10; 1e-10 1.0])
 
         # Should handle small values without producing NaN/Inf
         col_cache = Vector{eltype(W)}(undef, size(W, 1))
@@ -326,7 +374,7 @@ end
 
         # Test with larger matrix containing small values
         n = 5
-        W = Matrix{Float64}(I, n, n) + 1e-10 * rand(n, n)
+        W = Matrix{ComplexF64}(I, n, n) + 1e-10 * rand(ComplexF64, n, n)
         rng = Random.Xoshiro(42)  # Fixed seed for reproducibility
         l = rand(rng, 1:n)
         K = rand(rng, 1:n)
@@ -360,15 +408,19 @@ end
     W_down = Matrix{ComplexF64}(undef, n, N_down)
     W_up .= 1.0 + 0.0im
     W_down .= 1.0 + 0.0im
+    ns = n
+    lat_mock = DummyLattice(ns)
+    ham = Hamiltonian(
+        N_up,
+        N_down,
+        zeros(ComplexF64, n, N_up),
+        zeros(ComplexF64, n, N_down),
+        zeros(ComplexF64, n, n),
+        Tuple{Int,Int}[],
+        lat_mock,
+    )
     mc = MC(
-        Hamiltonian(
-            N_up,
-            N_down,
-            zeros(ComplexF64, n, N_up),
-            zeros(ComplexF64, n, N_down),
-            zeros(ComplexF64, n, n),
-            Tuple{Int,Int}[],
-        ),
+        ham,
         [1, 0, 2, 0],
         [0, 1, 0, 2],
         copy(W_up),
@@ -435,7 +487,7 @@ end
 
     # Create a mock U_up matrix that will lead to a singular tilde_U_up
     # Make all rows identical to guarantee singularity of tilde_U_up
-    U_up_singular = rand(1, N_up) # Create one random row
+    U_up_singular = complex(rand(1, N_up)) # Create one random row
     U_up_singular = repeat(U_up_singular, ns, 1) # Repeat it for all ns rows
 
     # Create a mock Hamiltonian with the singular U_up
@@ -443,17 +495,18 @@ end
         N_up,
         N_down,
         U_up_singular,
-        rand(ns, N_down),
+        complex(rand(ns, N_down)),
         zeros(ComplexF64, ns, ns),
         Tuple{Int,Int}[],
+        DummyLattice(ns),
     )
 
     mc_singular = MC(
         mock_ham_singular,
         zeros(Int, ns),
         zeros(Int, ns),
-        zeros(ns, N_up),
-        zeros(ns, N_down),
+        zeros(ComplexF64, ns, N_up),
+        zeros(ComplexF64, ns, N_down),
     )
 
     ctx_singular = Carlo.MCContext{Random.Xoshiro}(

@@ -14,4 +14,7 @@ include("Hamiltonian.jl")
 
 export MC, MCContext, tilde_U
 include("MonteCarlo.jl")
+
+export get_sublattice_indices, get_reciprocal_vectors, get_K_points, spin_structure_factor
+include("Measurements.jl")
 end

@@ -135,14 +135,13 @@ end
 end
 
 @testset "getOL" begin
-    # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [1,0,1,1,1,1,1,0,0,0,0,0]
-    kappa_up = vcat([1], [0], collect(2:6), fill(0, 5))
     mc = KagomeDSL.MC(
         Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 6, :N_down => 6),
     )
     # consider up: [1,0,1,1,1,1,1,0,0,0,0,0] down: [0,1,0,0,0,0,0,1,1,1,1,1]
-    kappa_down = vcat([0], [1], fill(0, 5), collect(2:6))
-    @test KagomeDSL.getOL(mc, kappa_up, kappa_down) != 0.0
+    mc.kappa_up = vcat([1], [0], collect(2:6), fill(0, 5))
+    mc.kappa_down = vcat([0], [1], fill(0, 5), collect(2:6))
+    @test KagomeDSL.getOL(mc) != 0.0
 end
 
 @testset "Sz tests" begin

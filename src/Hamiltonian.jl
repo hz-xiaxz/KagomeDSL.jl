@@ -254,6 +254,7 @@ struct Hamiltonian
     U_down::Matrix{ComplexF64}
     H_mat::Matrix{ComplexF64}
     nn::AbstractArray
+    lat::AbstractLattice
 end
 
 function get_nn(H_mat::AbstractMatrix)
@@ -274,7 +275,7 @@ function Hamiltonian(
     H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = get_nn(H_mat)
-    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
+    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn, lat)
 end
 
 
@@ -428,12 +429,9 @@ end
 The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
 The Hamiltonian should be the real one!
 """
-@inline function getOL(mc::AbstractMC, kappa_up::Vector{Int}, kappa_down::Vector{Int})
-    @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
-    # if double occupied state, no possibility to have a non-zero overlap
-
+@inline function getOL(mc::AbstractMC)
     OL = 0.0
-    xprime = getxprime(mc.Ham, kappa_up, kappa_down)
+    xprime = getxprime(mc.Ham, mc.kappa_up, mc.kappa_down)
     @inbounds for (conf, coff) in pairs(xprime)
         if conf == ConfigKey(-1, -1, -1, -1)
             OL += coff

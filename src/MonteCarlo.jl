@@ -177,7 +177,7 @@ Ref: Quantum Monte Carlo Approaches for Correlated Systems (Becca and Sorella, 2
 
 As system size increases, ``<Φ|x>`` becomes exponentially small comparing to system size, inversely proportional to the dimension of the Hilbert space.
 
-The smallness of init ``<Φ|x>`` will lead to numerical instability in the first computation of the W matrices, but not affecting the Markov chain sampling, since we always calculate ``\\frac{<Φ|x'>}{<Φ|x>}`` there, which shall not be a numerically instable number.
+The smallness of init ``<Φ|x>`` will lead to numerical instability in the first computation of the W matrices, but not affecting the Markov chain sampling, since we always calculate ``\frac{<Φ|x'>}{<Φ|x>}`` there, which shall not be a numerically instable number.
 
 To avoid this issue we initializes the particle configurations `kappa_up` and `kappa_down` in the `mc` object
 using a deterministic method based on QR decomposition with column pivoting.
@@ -402,10 +402,27 @@ matrices, a warning is issued and the simulation continues.
 end
 
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
+    # trick to reduce auto-correlation time
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
-        OL = getOL(mc, mc.kappa_up, mc.kappa_down)
+        OL = getOL(mc)
         measure!(ctx, :OL, OL)
+        ns = length(mc.kappa_up)
+        sz_values = [Sz(i, mc.kappa_up, mc.kappa_down) for i in 1:ns]
+        measure!(ctx, :Sz, sz_values)
+
+        # Sublattice spin structure factor
+        lat = mc.Ham.lat
+        sublattices = get_sublattice_indices(lat)
+        K1, K2 = get_K_points(lat)
+
+        for i in 1:6
+            S_i_K1 = spin_structure_factor(sz_values, K1, sublattices[i], lat)
+            measure!(ctx, Symbol("S_zz_$(i)_K1"), S_i_K1)
+        end
+
+        S_xy_K1 = calculate_S_xy(mc, K1)
+        measure!(ctx, :S_xy_K1, S_xy_K1)
     end
 end
 
