@@ -5,11 +5,6 @@ using LinearAlgebra
 using Carlo
 using HDF5
 
-struct DummyLattice <: KagomeDSL.AbstractLattice
-    ns::Int
-end
-KagomeDSL.ns(lat::DummyLattice) = lat.ns
-
 
 @testset "MC" begin
     param = Dict(:n1 => 4, :n2 => 3, :PBC => (true, false), :N_up => 18, :N_down => 18)
@@ -36,7 +31,6 @@ end
             U_down_mock,
             zeros(ComplexF64, ns, ns),
             Tuple{Int,Int}[],
-            DummyLattice(ns),
         )
 
         mc = MC(
@@ -216,7 +210,6 @@ end
             U_down,
             zeros(ComplexF64, ns, ns),
             Tuple{Int,Int}[],
-            DummyLattice(ns),
         )
         kappa_up = [1, 2]
         kappa_down = [2, 1]
@@ -251,7 +244,6 @@ end
             U_down,
             zeros(ComplexF64, ns, ns),
             Tuple{Int,Int}[],
-            DummyLattice(ns),
         )
         kappa_up = [1, 2, 0, 0]
         kappa_down = [0, 0, 1, 2]
@@ -330,7 +322,6 @@ end
             zeros(ComplexF64, ns, N_down),
             zeros(ComplexF64, ns, ns),
             Tuple{Int,Int}[],
-            DummyLattice(ns),
         )
         mc = MC(
             mock_ham,

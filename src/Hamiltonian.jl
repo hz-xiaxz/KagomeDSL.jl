@@ -254,7 +254,6 @@ struct Hamiltonian
     U_down::Matrix{ComplexF64}
     H_mat::Matrix{ComplexF64}
     nn::AbstractArray
-    lat::AbstractLattice
 end
 
 function get_nn(H_mat::AbstractMatrix)
@@ -275,7 +274,7 @@ function Hamiltonian(
     H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = get_nn(H_mat)
-    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn, lat)
+    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
 end
 
 

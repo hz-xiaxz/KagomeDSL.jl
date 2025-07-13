@@ -410,19 +410,8 @@ end
         ns = length(mc.kappa_up)
         sz_values = [Sz(i, mc.kappa_up, mc.kappa_down) for i in 1:ns]
         measure!(ctx, :Sz, sz_values)
-
-        # Sublattice spin structure factor
-        lat = mc.Ham.lat
-        sublattices = get_sublattice_indices(lat)
-        K1, K2 = get_K_points(lat)
-
-        for i in 1:6
-            S_i_K1 = spin_structure_factor(sz_values, K1, sublattices[i], lat)
-            measure!(ctx, Symbol("S_zz_$(i)_K1"), S_i_K1)
-        end
-
-        S_xy_K1 = calculate_S_xy(mc, K1)
-        measure!(ctx, :S_xy_K1, S_xy_K1)
+        S_xy = calculate_S_xy(mc)
+        measure!(ctx, :S_xy, S_xy)
     end
 end
 
