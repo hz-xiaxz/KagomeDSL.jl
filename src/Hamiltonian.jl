@@ -361,6 +361,11 @@ function spinInteraction!(
     i::Int,
     j::Int,
 )
+    n = length(kappa_up)
+    @boundscheck begin
+        (1 <= i <= n && 1 <= j <= n) || throw(BoundsError(kappa_up, (i, j)))
+    end
+
     i_up = @inbounds kappa_up[i]
     j_up = @inbounds kappa_up[j]
     i_down = @inbounds kappa_down[i]

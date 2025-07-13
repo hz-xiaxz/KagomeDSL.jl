@@ -400,7 +400,6 @@ end
     W_up .= 1.0 + 0.0im
     W_down .= 1.0 + 0.0im
     ns = n
-    lat_mock = DummyLattice(ns)
     ham = Hamiltonian(
         N_up,
         N_down,
@@ -489,7 +488,6 @@ end
         complex(rand(ns, N_down)),
         zeros(ComplexF64, ns, ns),
         Tuple{Int,Int}[],
-        DummyLattice(ns),
     )
 
     mc_singular = MC(
