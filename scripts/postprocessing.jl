@@ -9,8 +9,8 @@ using LinearAlgebra # For norm()
 # Load data
 path = joinpath(@__DIR__, "../data/LL-4x4.results.json")
 df = DataFrame(ResultTools.dataframe(path))
-Sz = df[1, :Sz]
-S_xy = df[1, :S_xy]
+Sz = df[6, :Sz]
+S_xy = df[6, :S_xy]
 
 t = 1.0
 n1 = 4
@@ -31,7 +31,7 @@ num_sites = length(sites)
 sz_values = Measurements.value.(Sz)
 s_xy_values = Measurements.value.(S_xy)
 
-# --- Create the Figure with 3 Panels ---
+# --- Create the Figure with 2 Panels ---
 fig = Figure()
 
 # Panel 1: Sz expectation values (your original plot)
@@ -51,9 +51,13 @@ hidedecorations!(ax1)
 hidespines!(ax1)
 
 
-# Panel 2: S_xy correlations as bonds (your original plot)
-ax2 = Axis(fig[1, 2], aspect = DataAspect(), title = "S_xy Correlations (Bond Plot)")
-scatter!(ax2, x_coords, y_coords, color = :gray)
+# --- NEW: Panel 2: Inferred Spin Directions (Vector Plot) ---
+ax2 = Axis(
+    fig[1, 2],
+    aspect = DataAspect(),
+    title = "Inferred Spin Directions (Pinned at Red Site)",
+)
+
 annotation!(
     ax2,
     x_coords,
@@ -62,90 +66,90 @@ annotation!(
     color = :black,
     fontsize = 8,
 )
-s_xy_max_abs = maximum(abs.(s_xy_values))
-for i = 1:num_sites, j = (i+1):num_sites
-    corr_val = s_xy_values[i, j]
-    if abs(corr_val) > 0.01 # Threshold to avoid clutter
-        lines!(
-            ax2,
-            [x_coords[i], x_coords[j]],
-            [y_coords[i], y_coords[j]],
-            color = corr_val,
-            colormap = :viridis,
-            colorrange = (-s_xy_max_abs, s_xy_max_abs),
-            linewidth = 8 * abs(corr_val) / s_xy_max_abs,
-        )
-    end
-end
-Colorbar(
-    fig[1, 2][1, 2],
-    limits = (-s_xy_max_abs, s_xy_max_abs),
-    colormap = :viridis,
-    label = "⟨SᵢˣSⱼˣ+SᵢʸSⱼʸ⟩",
-)
-hidedecorations!(ax2)
-hidespines!(ax2)
 
+# CHOOSE YOUR REFERENCE SITE HERE! A site near the center is usually best.
+# ref_site_idx = 1 # Let's pick site 25 as an example
 
-# --- NEW: Panel 3: Inferred Spin Directions (Vector Plot) ---
-ax3 = Axis(
-    fig[1, 3],
-    aspect = DataAspect(),
-    title = "Inferred Spin Directions (Pinned at Red Site)",
-)
+# --- MODIFICATION: Account for non-zero Sz in angle calculation ---
+# We want to calculate cos(Δθ) = <S_ref_xy . S_j_xy> / (|S_ref_xy| |S_j_xy|)
+# We approximate |S_i_xy| using <S_i_z>.
+# For a spin S, |S_i_xy|^2 = S(S+1) - S_iz^2.
+# We approximate <|S_i_xy|^2> ≈ S(S+1) - <S_iz^2>
+# And we approximate <S_iz^2> ≈ <S_iz>^2 + Var(S_iz)
+S = 0.5 # Assume S=1/2
+S_sq_plus_1 = S * (S + 1)
 
-annotation!(
-    ax3,
-    x_coords,
-    y_coords,
-    text = string.(1:length(sites)),
-    color = :black,
-    fontsize = 8,
-)
+sz_exp_vals = Measurements.value.(Sz)
+sz_uncertainties = Measurements.uncertainty.(Sz)
+sz_sq_exp = sz_exp_vals .^ 2 + sz_uncertainties .^ 2
+
+# Estimate of <|S_i_xy|^2> for each site
+s_perp_sq = max.(0, S_sq_plus_1 .- sz_sq_exp)
+# Estimate of sqrt(<|S_i_xy|^2>) for each site
+s_perp = sqrt.(s_perp_sq)
 
 # CHOOSE YOUR REFERENCE SITE HERE! A site near the center is usually best.
 ref_site_idx = 1 # Let's pick site 25 as an example
 
-# The auto-correlation C(i,i) gives the theoretical maximum value, S(S+1)/2 or S^2
-# Using it makes the normalization robust. For S=1/2, this is ~0.25
-C_max = s_xy_values[ref_site_idx, ref_site_idx]
-if C_max < 1e-6
+# The auto-correlation of the reference site is used for scaling arrow lengths
+C_ref_auto = s_xy_values[ref_site_idx, ref_site_idx]
+if C_ref_auto < 1e-6
     @warn "Auto-correlation at reference site is near zero. Check your data or ref_site_idx."
-    C_max = 0.25# Fallback for S=1/2
+    C_ref_auto = S_sq_plus_1 # Fallback for S=1/2, S(S+1)
 end
+# --- END MODIFICATION ---
 
 # Calculate the vector components (u, v) for each site
 u = zeros(num_sites)
 v = zeros(num_sites)
 
+# The reference spin is pinned at angle theta_ref. We add the relative
+# angle delta_theta to get the absolute angle of the current spin.
+# Note: There is an inherent ambiguity in the sign of delta_theta.
+# We consistently choose the positive root from acos.
+theta_ref = atan(-√3 / 2, -1 / 2)
+
 for j = 1:num_sites
     if j == ref_site_idx
-        # Pin the reference spin to point right
+        # Pin the reference spin
         u[j] = -1 / 2
         v[j] = -√3 / 2
     else
         # Get correlation with the reference site
         corr_val = s_xy_values[ref_site_idx, j]
 
+        # --- MODIFICATION: Use new normalization for cos(Δθ) ---
         # Normalize correlation to get cos(Δθ)
-        # clamp ensures the value is in [-1, 1] to avoid acos domain errors
-        c_norm = clamp(corr_val / C_max, -1.0, 1.0)
+        # The normalization factor is |S_ref_xy| * |S_j_xy|
+        norm_factor = s_perp[ref_site_idx] * s_perp[j]
 
-        # The angle of spin j relative to the reference spin (which is at 0 rad)
+        c_norm = if norm_factor < 1e-6
+            0.0
+        else
+            # clamp ensures the value is in [-1, 1] to avoid acos domain errors
+            clamp(corr_val / norm_factor, -1.0, 1.0)
+        end
+        # --- END MODIFICATION ---
+
+        # The angle of spin j relative to the reference spin
         delta_theta = acos(c_norm)
 
         # The length of the arrow is proportional to the correlation strength
-        arrow_length = abs(corr_val / C_max)
+        # Let's normalize by the auto-correlation of the reference site
+        arrow_length = abs(corr_val / C_ref_auto)
+
+        # Add the relative angle to the reference angle to get the absolute angle
+        theta_j = theta_ref + delta_theta
 
         # Convert polar (length, angle) to Cartesian (u, v) components
-        u[j] = arrow_length * cos(delta_theta)
-        v[j] = arrow_length * sin(delta_theta)
+        u[j] = arrow_length * cos(theta_j)
+        v[j] = arrow_length * sin(theta_j)
     end
 end
 
 # Plot the vector field
 arrows2d!(
-    ax3,
+    ax2,
     x_coords,
     y_coords,
     u,
@@ -158,7 +162,7 @@ arrows2d!(
 )
 # Highlight the reference spin in red
 arrows2d!(
-    ax3,
+    ax2,
     [x_coords[ref_site_idx]],
     [y_coords[ref_site_idx]],
     [u[ref_site_idx]],
@@ -169,10 +173,10 @@ arrows2d!(
     shaftcolor = :red,
 )
 
-scatter!(ax3, x_coords, y_coords, color = :lightgray, markersize = 5) # Show site positions faintly
+scatter!(ax2, x_coords, y_coords, color = :lightgray, markersize = 5) # Show site positions faintly
 
-hidedecorations!(ax3)
-hidespines!(ax3)
+hidedecorations!(ax2)
+hidespines!(ax2)
 
 
 # Display the final figure
