@@ -9,15 +9,16 @@ using LinearAlgebra
 
 tm = TaskMaker()
 tm.thermalization = 5000
-tm.sweeps = 5_000_000
-tm.binsize = 2
-tm.n1 = 4 
-tm.n2 = 4 
+tm.sweeps = 50_000_000
+tm.binsize = 10
+tm.n1 = 4
+tm.n2 = 4
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, true)
 tm.antiPBC = (false, true)
 tm.lattice = DoubleKagome
-imbalances = [0, 8, 16, 32, 40, 56]
+# exhaust shells
+imbalances = [0, 4, 8, 16, 20, 24, 28, 32, 36, 40]
 for imbalance in imbalances
     B0 = imbalance * π / (tm.n1 * tm.n2 * (2√3)) / 2
     tm.B = B0

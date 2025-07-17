@@ -4,6 +4,8 @@ using DataFrames
 using Measurements
 using KagomeDSL
 using LinearAlgebra # For norm()
+using MakiePublication
+set_theme!(theme_web())
 
 # Load data
 path = joinpath(@__DIR__, "../data/LL-4x4.results.json")
@@ -57,7 +59,6 @@ function update_uv(num_sites, s_xy_values)
     # Initialize for iterative angle propagation
     known_angles = zeros(Float64, num_sites)
     s_xy_values = Measurements.value.(real.(s_xy_values))
-    @show typeof(s_xy_values)
 
     function cal_unitcell(first_site_angle::Float64, first_site_idx::Int, s_xy_values)
         corr12 = real(s_xy_values[first_site_idx, first_site_idx+1])
@@ -134,8 +135,8 @@ arrows2d!(
 arrows2d!(
     [x_coords[ref_site_idx]],
     [y_coords[ref_site_idx]],
-    [-√3/2],
-    [-1/2],
+    [-√3 / 2],
+    [-1 / 2],
     tiplength = 15,
     lengthscale = 0.5,
     normalize = true,
@@ -157,4 +158,13 @@ record(fig, "XY.mp4", timestamps; framerate = framerate) do i
 
     imbalance[] = df[i, :imbalance]
     u[], v[] = update_uv(num_sites, Measurements.values.(df[i, :S_xy]))
+end
+
+for i = 1:10
+    Sz[] = df[i, :Sz]
+    S_xy_values[] = df[i, :S_xy]
+    imbalance[] = df[i, :imbalance]
+    u[], v[] = update_uv(num_sites, Measurements.values.(df[i, :S_xy]))
+    # Update the plot
+    save(joinpath(@__DIR__, "../data/LL-4x4-imbalance-$i.png"),fig)
 end

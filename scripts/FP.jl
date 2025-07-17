@@ -6,19 +6,18 @@ using Carlo
 using Carlo.JobTools
 using Dates
 using LinearAlgebra
-using ArnoldiMethod
 
 tm = TaskMaker()
 tm.thermalization = 5000
-tm.sweeps = 1_000_000
-tm.binsize = 50
-tm.n1 = 8
-tm.n2 = 8
+tm.sweeps = 10_000 
+tm.binsize = 3 
+tm.n1 = 4 
+tm.n2 = 4 
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, true)
 tm.antiPBC = (false, true)
 tm.lattice = DoubleKagome
-imbalances = [0, 8, 16, 32, 40, 56]
+imbalances = [0, ]
 for imbalance in imbalances
     tm.imbalance = imbalance
     task(tm; N_up = ns ÷ 2 + imbalance ÷ 2, N_down = ns ÷ 2 - imbalance ÷ 2)
@@ -26,7 +25,7 @@ end
 
 dir = @__DIR__
 # savepath = dir * "/../data/" * Dates.format(Dates.now(), "mm-ddTHH-MM-SS")
-savepath = dir * "/../data/" * "FP-$(tm.n1)x$(tm.n2)"
+savepath = dir * "/../data/" * "SC-FP-$(tm.n1)x$(tm.n2)"
 job = JobInfo(
     savepath,
     KagomeDSL.MC;
