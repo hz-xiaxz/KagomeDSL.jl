@@ -233,6 +233,29 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
     # from the sign of `-t`
 end
 
+"""
+    check_shell(E::AbstractArray, Nup::Int, ns::Int)
+
+Check if the whole degenerate shell of single particle eigenstates are filled.
+"""
+function check_shell(E::AbstractArray, Nup::Int, ns::Int)
+    shell_pool = []
+    # iteratively find degenerate spaces
+    start_shell = 1
+    while start_shell < length(E)
+        num = findlast(x -> isapprox(x, E[start_shell], atol = 1e-10), E)
+        push!(shell_pool, (start_shell, num))
+        start_shell = num + 1
+    end
+    # the number of N_up and N_down should be at least > num
+    shell = filter(
+        x -> (x[1] <= Nup && x[2] > Nup) || (x[1] <= (ns - Nup) && x[2] > (ns - Nup)),
+        shell_pool
+    )
+    return isempty(shell)
+end
+
+
 # temporarily separate the N_up and N_down subspaces
 function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
     # search_num = max(N_up, N_down)
@@ -244,6 +267,12 @@ function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
     # select N lowest eigenvectors as the sampling ensemble
     U_up = evecs[:, 1:N_up]
     U_down = evecs[:, 1:N_down]
+    check_shell(evalues, N_up, size(H_mat, 1))
+
+    @warn "Nup=$N_up does not close a shell, leading to symmetry breaking." 
+        if !check_shell(evalues, N_up, size(H_mat, 1))
+    end
+
     return U_up, U_down
 end
 
