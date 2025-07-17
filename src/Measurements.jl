@@ -112,8 +112,6 @@ function calculate_S_xy(mc::MC)
             else
                 S_xy[i, j] = 0.0
             end
-
-            S_xy[i, j] = C_xy_ij
         end
     end
     return S_xy
