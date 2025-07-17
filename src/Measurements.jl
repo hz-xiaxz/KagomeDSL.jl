@@ -80,38 +80,9 @@ function spin_structure_factor(
     return abs2(factor) / length(sites)
 end
 
-function _get_spin_xy_correlation_terms(
-    kappa_up::Vector{Int},
-    kappa_down::Vector{Int},
-    i::Int,
-    j::Int,
-)
-    xprime = Dict{ConfigKey,Float64}()
-    i_up = @inbounds kappa_up[i]
-    j_up = @inbounds kappa_up[j]
-    i_down = @inbounds kappa_down[i]
-    j_down = @inbounds kappa_down[j]
-
-    # Case 1: S+_i S-_j
-    # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
-    if j_up != 0 && i_down != 0
-        new_conf = ConfigKey(i, j_up, j, i_down)
-        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 0.5
-    end
-
-    # Case 2: S-_i S+_j
-    # i has up spin (kappa_up[i] ≠ 0) and j has down spin (kappa_down[j] ≠ 0)
-    if i_up != 0 && j_down != 0
-        new_conf = ConfigKey(j, i_up, i, j_down)
-        xprime[new_conf] = get!(xprime, new_conf, 0.0) + 0.5
-    end
-
-    return xprime
-end
-
 function calculate_S_xy(mc::MC)
     ns = length(mc.kappa_up)
-    S_xy = zeros(Float64, ns, ns)
+    S_xy = zeros(ComplexF64, ns, ns)
 
     for i = 1:ns
         for j = 1:ns
@@ -122,19 +93,27 @@ function calculate_S_xy(mc::MC)
                 S_xy[i, i] = 0.5
                 continue
             end
-
-            xprime = _get_spin_xy_correlation_terms(mc.kappa_up, mc.kappa_down, i, j)
-
-            C_xy_ij = 0.0
-            if !isempty(xprime)
-                for (conf, coeff) in pairs(xprime)
-                    update_up = mc.W_up[conf[1], conf[2]]
-                    update_down = mc.W_down[conf[3], conf[4]]
-                    ratio = update_up * update_down
-                    C_xy_ij += coeff * ratio
-                end
+            # Splus Sminus case
+            if mc.kappa_down[i] != 0 && mc.kappa_up[j] != 0
+                l_up = mc.kappa_up[j]
+                K_up = i
+                l_down = mc.kappa_down[i]
+                K_down = j
+                # think there is a minus sign
+                S_xy[i, j] = -0.5 * mc.W_up[K_up, l_up] * mc.W_down[K_down, l_down]
+                # Sminus Splus case
+            elseif mc.kappa_up[i] != 0 && mc.kappa_down[j] != 0
+                l_up = mc.kappa_up[i]
+                K_up = j
+                l_down = mc.kappa_down[j]
+                K_down = i
+                # think there is a minus sign
+                S_xy[i, j] = -0.5 * mc.W_up[K_up, l_up] * mc.W_down[K_down, l_down]
+            else
+                S_xy[i, j] = 0.0
             end
-            S_xy[i, j] = real(C_xy_ij)
+
+            S_xy[i, j] = C_xy_ij
         end
     end
     return S_xy
