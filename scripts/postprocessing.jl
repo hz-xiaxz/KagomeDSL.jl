@@ -7,7 +7,7 @@ using LinearAlgebra # For norm()
 
 # Load data
 path = joinpath(@__DIR__, "../data/LL-4x4.results.json")
-df = DataFrame(ResultTools.dataframe(path))
+df = DataFrame(ResultTools.DataFrame(path))
 Sz = df[1, :Sz]
 S_xy_values = df[1, :S_xy]
 
