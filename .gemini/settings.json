@@ -1,6 +1,7 @@
 {
-"contextFileName": "GEMINI.md",
-"fileFiltering": {
-  "respectGitIgnore": false
-}
+  "contextFileName": "GEMINI.md",
+  "fileFiltering": {
+    "respectGitIgnore": false,
+    "hideBanner": true
+  }
 }
