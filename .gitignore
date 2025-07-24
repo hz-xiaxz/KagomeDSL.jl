@@ -12,6 +12,7 @@ env
 node_modules
 _research/
 data/
+notebooks/
 notebook/
 scripts/debug_job.jl
 LocalPreferences.toml
