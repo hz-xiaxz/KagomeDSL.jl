@@ -336,8 +336,8 @@ function SzInteraction!(
     i::Int,
     j::Int,
 )
-    xprime[ConfigKey(-1, -1, -1, -1)] =
-        get!(xprime, ConfigKey(-1, -1, -1, -1), 0.0) +
+    xprime[(-1, -1, -1, -1)] =
+        get!(xprime, (-1, -1, -1, -1), 0.0) +
         Sz(i, kappa_up, kappa_down) * Sz(j, kappa_up, kappa_down)
     return nothing
 end
@@ -374,7 +374,7 @@ function spinInteraction!(
         # K_down = j  # j gets the down spin
         # l_up = kappa_up[j]   # take the up index from j
         # l_down = kappa_down[i]  # take the down index from i
-        new_conf = ConfigKey(i, j_up, j, i_down)
+        new_conf = (i, j_up, j, i_down)
         xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
@@ -385,27 +385,13 @@ function spinInteraction!(
         # K_down = i  # i gets the down spin
         # l_up = kappa_up[i]   # take the up index from i
         # l_down = kappa_down[j]  # take the down index from j
-        new_conf = ConfigKey(j, i_up, i, j_down)
+        new_conf = (j, i_up, i, j_down)
         xprime[new_conf] = get!(xprime, new_conf, 0.0) - 1.0 / 2.0
     end
 
     return nothing
 end
 
-struct ConfigKey
-    K_up::Int
-    l_up::Int
-    K_down::Int
-    l_down::Int
-end
-Base.hash(k::ConfigKey, h::UInt) =
-    hash(k.l_down, hash(k.K_down, hash(k.l_up, hash(k.K_up, h))))
-Base.:(==)(a::ConfigKey, b::ConfigKey) =
-    a.K_up == b.K_up && a.l_up == b.l_up && a.K_down == b.K_down && a.l_down == b.l_down
-Base.getindex(k::ConfigKey, i::Int) = getfield(k, i)
-Base.length(::ConfigKey) = 4
-Base.iterate(k::ConfigKey, state = 1) =
-    state > 4 ? nothing : (getfield(k, state), state + 1)
 
 """
 
@@ -414,7 +400,7 @@ Note ``|x>`` here should also be a Mott state.
 """
 @inline function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     nn = Ham.nn
-    xprime = Dict{ConfigKey,Float64}()
+    xprime = Dict{NTuple{4,Int},Float64}()
     # just scan through all the bonds
     @inbounds for bond in nn
         spinInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
@@ -435,7 +421,7 @@ The Hamiltonian should be the real one!
     OL = 0.0
     xprime = getxprime(mc.Ham, kappa_up, kappa_down)
     @inbounds for (conf, coff) in pairs(xprime)
-        if conf == ConfigKey(-1, -1, -1, -1)
+        if conf == (-1, -1, -1, -1)
             OL += coff
         else
             update_up = mc.W_up[conf[1], conf[2]]

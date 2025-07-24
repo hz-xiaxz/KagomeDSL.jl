@@ -1,5 +1,5 @@
 using KagomeDSL
-using KagomeDSL: ns, apply_boundary_conditions!, get_boundary_shifts, ConfigKey
+using KagomeDSL: ns, apply_boundary_conditions!, get_boundary_shifts
 using Random
 @testset "Hamiltonian" begin
     DK = DoubleKagome(1.0, 4, 3, (false, false))
@@ -110,7 +110,7 @@ end
     nn = ham.nn
     Sz_sum = (length(nn) - 2) * (1 / 4)
     Sz_sum += (2 * (-1 / 4))
-    @test xprime[ConfigKey(-1, -1, -1, -1)] == Sz_sum
+    @test xprime[(-1, -1, -1, -1)] == Sz_sum
     # Sx Sy interaction, only happens in the bonds having site 1
     Sx_Sy_sum = 0.0
     # Sx Sy = 1/2()
@@ -121,7 +121,7 @@ end
     l_up = 1
     k_down = 1
     l_down = 1
-    conf = ConfigKey(k_up, l_up, k_down, l_down)
+    conf = (k_up, l_up, k_down, l_down)
     @test conf in keys(xprime)
     @test xprime[conf] == -1 / 2
     # x2 is flip 1 up, flip 3 down
@@ -129,7 +129,7 @@ end
     l_up_3 = 1
     k_down_3 = 1
     l_down_3 = 2
-    conf_3 = ConfigKey(k_up_3, l_up_3, k_down_3, l_down_3)
+    conf_3 = (k_up_3, l_up_3, k_down_3, l_down_3)
     @test conf_3 in keys(xprime)
     @test xprime[conf_3] == -1 / 2
 end
@@ -239,24 +239,24 @@ end
         # Initialize test configuration
         kappa_up = [1, 0, 2]   # up spins at sites 1 and 3
         kappa_down = [0, 1, 0]  # down spin at site 2
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
 
         # Test S+_i S-_j: site 2(↓) -> site 1(↑)
         spinInteraction!(xprime, kappa_up, kappa_down, 2, 1)
-        @test haskey(xprime, ConfigKey(2, 1, 1, 1))  # new configuration
-        @test xprime[ConfigKey(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
+        @test haskey(xprime, (2, 1, 1, 1))  # new configuration
+        @test xprime[(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
 
         # Test S-_i S+_j: site 1(↑) -> site 2(↓)
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
-        @test haskey(xprime, ConfigKey(2, 1, 1, 1))  # new configuration
-        @test xprime[ConfigKey(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
+        @test haskey(xprime, (2, 1, 1, 1))  # new configuration
+        @test xprime[(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
     end
 
     @testset "No action cases" begin
         kappa_up = [1, 0, 2]
         kappa_down = [0, 1, 0]
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
 
         # Test when both sites have same spin
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 3)  # both up
@@ -264,32 +264,32 @@ end
 
         spinInteraction!(xprime, kappa_up, kappa_down, 2, 3)
         @test !isempty(xprime)
-        @test xprime[ConfigKey(2, 2, 3, 1)] == -0.5
+        @test xprime[(2, 2, 3, 1)] == -0.5
     end
 
     @testset "Multiple interactions" begin
         kappa_up = [1, 0, 2]
         kappa_down = [0, 1, 0]
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
 
         # Apply same interaction twice
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
-        @test xprime[ConfigKey(2, 1, 1, 1)] ≈ -1.0  # coefficients should add
+        @test xprime[(2, 1, 1, 1)] ≈ -1.0  # coefficients should add
     end
 
     @testset "Edge cases" begin
         # Single site case
         kappa_up = [1]
         kappa_down = [0]
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
         @test isempty(xprime)  # no self-interaction
 
         # Empty configuration
         kappa_up = Int[]
         kappa_down = Int[]
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
         @test_throws BoundsError spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
     end
 
@@ -300,30 +300,30 @@ end
         kappa_up[1] = 1    # up spin at first site
         kappa_down[2] = 1  # down spin at second site
 
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
 
-        @test haskey(xprime, ConfigKey(2, 1, 1, 1))
-        @test xprime[ConfigKey(2, 1, 1, 1)] ≈ -0.5
+        @test haskey(xprime, (2, 1, 1, 1))
+        @test xprime[(2, 1, 1, 1)] ≈ -0.5
     end
 
     @testset "Accumulation behavior" begin
         kappa_up = [1, 0, 2]
         kappa_down = [0, 1, 0]
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
 
         # Add some initial value
-        xprime[ConfigKey(2, 1, 1, 1)] = 0.25
+        xprime[(2, 1, 1, 1)] = 0.25
 
         # Apply interaction
         spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
-        @test xprime[ConfigKey(2, 1, 1, 1)] ≈ -0.25  # 0.25 - 0.5
+        @test xprime[(2, 1, 1, 1)] ≈ -0.25  # 0.25 - 0.5
     end
 
     @testset "Type stability" begin
         kappa_up = [1, 0]
         kappa_down = [0, 1]
-        xprime = Dict{ConfigKey,Float64}()
+        xprime = Dict{NTuple{4,Int},Float64}()
 
         # Test that the function maintains type stability
         @inferred spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
