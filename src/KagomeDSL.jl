@@ -5,6 +5,9 @@ using Random
 using Carlo
 using HDF5
 import LinearAlgebra.BLAS: geru!
+using MKL
+MKL.set_num_threads(1)  # Set MKL to use only one thread for reproducibility
+@info BLAS.get_config()
 
 export DoubleKagome
 include("Lattice.jl")
