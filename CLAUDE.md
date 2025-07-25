@@ -296,3 +296,10 @@ Follow these guidelines to maintain a clean and informative git history.
         -   `test(lattice): Add test for periodic boundary conditions`
         -   `refactor(measure): Improve performance of correlation function`
 -   **Body**: In the commit body, explain the "what" and "why" of the change. Do not just repeat the "how". If the change fixes a GitHub issue, add `Fixes #123` to the end of the body.
+# Tips
+1. use `eachindex(iterator)` instead of `1:length(iterator)` to avoid unnecessary allocations.
+2. Use `@views` to avoid unnecessary allocations when slicing arrays.
+3. Always use `Makie` to visualize, don't use `Plots.jl` or `Gadfly.jl`. 2D use `CairoMakie`, 3D use `WGLMakie`.
+4. Use `Figure(size=)` instead of `Figure(resolution=)` to set the figure size, the latter is deprecated. Most time, don't use `resolution` at all.
+5. Don't use deprecated `arrows` in ``Makie`, use `arrows2d, arrows3d` instead.
+6. When writing scripts, avoid using `\!` this is invalid, use `!` instead.
