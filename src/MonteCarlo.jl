@@ -409,6 +409,45 @@ end
     end
 end
 
+"""    
+    Carlo.register_evaluables(::Type{MC}, eval::Evaluator, params::AbstractDict)
+
+Register postprocessing evaluators for final analysis after Monte Carlo simulation.
+
+**IMPORTANT: This is purely for postprocessing** - these evaluators are executed 
+at the end of the simulation or during merge operations to compute final observables 
+from the collected raw measurements. They do NOT affect the Monte Carlo dynamics.
+
+This function defines how to compute physical observables from the raw measured 
+data (:OL values) that was collected during the simulation via Carlo.measure!().
+
+# Arguments
+- `::Type{MC}`: Monte Carlo type dispatch
+- `eval::Evaluator`: Carlo.jl evaluator for postprocessing computations
+- `params::AbstractDict`: Simulation parameters containing lattice dimensions
+
+# Registered Evaluables
+- `:energy`: Computes the energy per site from local energy measurements
+  - Formula: energy = ⟨OL⟩ / ns, where ns = total number of sites
+  - Input: Raw :OL measurements collected during simulation
+  - Output: Normalized energy per site for final results
+
+# Usage in Carlo.jl Workflow
+1. **During simulation**: Carlo.measure!() collects raw :OL data
+2. **After simulation**: This function defines how to postprocess the data
+3. **Final analysis**: Carlo.jl automatically applies these evaluators to compute final results
+4. **Merge operations**: Used when combining data from multiple simulation runs
+
+# Physics Notes
+- OL represents the local energy estimator ⟨x|H|ψ_G⟩/⟨x|ψ_G⟩
+- Normalization by ns gives energy per site (intensive quantity)
+- Essential for comparing results across different system sizes
+
+# Performance Notes
+- Called only once during setup, not during simulation loops
+- Actual evaluation happens in postprocessing phase
+- Minimal computational overhead during Monte Carlo sampling
+"""
 @inline function Carlo.register_evaluables(
     ::Type{MC},
     eval::Evaluator,
@@ -423,12 +462,68 @@ end
     return nothing
 end
 
+"""    
+    Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
+
+Save Monte Carlo state for resuming simulations or postprocessing analysis.
+
+**Purpose**: Serializes the current spinon configuration to an HDF5 file for later 
+use in simulation continuation or postprocessing workflows.
+
+# Arguments
+- `mc::MC`: Monte Carlo state to save
+- `out::HDF5.Group`: Output HDF5 group for writing checkpoint data
+
+# Saved Data
+- `kappa_up`: Current up-spinon configuration vector
+- `kappa_down`: Current down-spinon configuration vector
+
+# Usage Contexts
+1. **Simulation checkpointing**: Save state for restarting long simulations
+2. **Postprocessing**: Preserve final configurations for additional analysis
+3. **Data archival**: Store representative configurations for later study
+
+# Notes
+- Called automatically by Carlo.jl during simulation checkpointing
+- Essential for resuming interrupted simulations
+- Enables analysis of specific configurations post-simulation
+"""
 @inline function Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
     out["kappa_up"] = Vector{Int}(mc.kappa_up)
     out["kappa_down"] = Vector{Int}(mc.kappa_down)
     return nothing
 end
 
+"""    
+    Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
+
+Restore Monte Carlo state from saved checkpoint for simulation continuation.
+
+**Purpose**: Loads previously saved spinon configurations to resume a simulation 
+from a specific state or initialize postprocessing analysis.
+
+# Arguments
+- `mc::MC`: Monte Carlo object to restore (modified in-place)
+- `in::HDF5.Group`: Input HDF5 group containing checkpoint data
+
+# Restored Data
+- `kappa_up`: Up-spinon configuration vector
+- `kappa_down`: Down-spinon configuration vector
+
+# Usage Contexts
+1. **Simulation resumption**: Continue interrupted long simulations
+2. **Postprocessing initialization**: Start analysis from specific configurations
+3. **Reproducibility**: Restore exact simulation states
+
+# Side Effects
+- Modifies mc.kappa_up and mc.kappa_down in-place
+- Overwrites current Monte Carlo configuration completely
+
+# Notes
+- Called automatically by Carlo.jl when resuming from checkpoints  
+- Essential for maintaining simulation continuity
+- Enables reproducible analysis workflows
+"""
 @inline function Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
     mc.kappa_up = Vector{Int}(read(in, "kappa_up"))
     mc.kappa_down = Vector{Int}(read(in, "kappa_down"))
