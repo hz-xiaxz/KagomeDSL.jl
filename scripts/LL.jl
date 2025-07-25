@@ -19,8 +19,8 @@ tm.antiPBC = (false, true)
 tm.lattice = DoubleKagome
 imbalances = [0, 2, 4, 8, 10, 14]
 for imbalance in imbalances
-    B0 = imbalance * π / (tm.n1 * tm.n2 * (2√3)) / 2
-    tm.B = B0
+    S = tm.n1 * tm.n2 * 2√3
+    tm.B = imbalance * π / S
     tm.imbalance = imbalance
     task(tm; N_up = ns ÷ 2 + imbalance ÷ 2, N_down = ns ÷ 2 - imbalance ÷ 2)
 end
