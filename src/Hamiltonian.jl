@@ -1,7 +1,30 @@
-# fluxed transition rule defined in the paper
-# (i, j) i is the initial state, j is the final state
-# in-cell transitions, needs index1 mod 6 == index2 mod 6
+# Spinon Hamiltonian for DoubleKagome lattice with π-flux per plaquette
+# This implements the theoretical model from quantum spin liquid research
+# where spinons (fractionalized spins) hop on the Kagome lattice with specific flux patterns.
+# 
+# Key concepts for AI understanding:
+# - Spinons: Fractionalized spin excitations that emerge in quantum spin liquids
+# - π-flux: Phase factor of π acquired when a spinon completes a loop around a plaquette
+# - Unit cell: Contains 6 sites arranged in two triangular motifs
+# - Peierls phase: Additional phase factor from magnetic field B
 
+"""    
+    unitcell_coord(lat::AbstractLattice, s::Int) -> Vector{Float64}
+
+Compute the real-space coordinate of the unit cell containing site `s`.
+
+For DoubleKagome lattice:
+- Sites 1-6 belong to unit cell 1, sites 7-12 to unit cell 2, etc.
+- Each unit cell has 6 sites arranged in two triangular motifs
+- Returns the coordinate of the unit cell origin in real space
+
+# Arguments
+- `lat::AbstractLattice`: The lattice structure
+- `s::Int`: Site index (1-indexed)
+
+# Returns
+- `Vector{Float64}`: Real-space coordinate of the unit cell origin
+"""
 function unitcell_coord(lat::AbstractLattice, s::Int)
     n1 = lat.n1 ÷ 2
     n2 = lat.n2
@@ -14,6 +37,22 @@ function unitcell_coord(lat::AbstractLattice, s::Int)
     return unitcell_coord
 end
 
+"""    
+    unitcell_diff(lat, unitcell_coord1, unitcell_coord2) -> (Int, Int)
+
+Calculate the lattice vector difference between two unit cells in terms of basis vectors (a1, a2).
+
+This function solves the linear system: unitcell_coord1 - unitcell_coord2 = dx*a1 + dy*a2
+to find integer coefficients (dx, dy) representing the separation in lattice units.
+
+# Arguments
+- `lat::AbstractLattice`: The lattice structure containing basis vectors a1, a2
+- `unitcell_coord1::Vector{Float64}`: Real-space coordinate of first unit cell
+- `unitcell_coord2::Vector{Float64}`: Real-space coordinate of second unit cell
+
+# Returns
+- `(dx::Int, dy::Int)`: Lattice vector coefficients such that coord1 - coord2 = dx*a1 + dy*a2
+"""
 function unitcell_diff(
     lat::AbstractLattice,
     unitcell_coord1::Vector{Float64},
@@ -37,6 +76,26 @@ function unitcell_diff(
 end
 
 
+"""    
+    get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int) -> Vector{Tuple{Int,Int,Float64}}
+
+Calculate all possible lattice vector shifts between sites s1 and s2 under periodic/antiperiodic boundary conditions.
+
+For quantum spin systems with twisted boundary conditions:
+- Periodic BC: ψ(r + L) = ψ(r)
+- Antiperiodic BC: ψ(r + L) = -ψ(r)
+
+Returns all equivalent separations considering lattice periodicity, with associated phase factors.
+
+# Arguments
+- `lat::AbstractLattice`: Lattice with boundary condition specifications
+- `s1::Int, s2::Int`: Site indices for the hopping term
+
+# Returns
+- `Vector{Tuple{Int,Int,Float64}}`: List of (dx, dy, sign) tuples where:
+  - `dx, dy`: Lattice vector coefficients
+  - `sign`: Phase factor (±1) from antiperiodic boundary crossings
+"""
 function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
     @assert s1 != s2 "s1 and s2 should not be the same, got: $s1 and $s2"
     PBC1, PBC2 = lat.PBC
@@ -93,6 +152,28 @@ function get_boundary_shifts(lat::AbstractLattice, s1::Int, s2::Int)
     return unique(shifts)
 end
 
+"""    
+    apply_boundary_conditions!(tunneling, lat, s1, s2, link_inter, B)
+
+Apply boundary conditions and magnetic field effects to inter-cell hopping terms.
+
+This function modifies the tunneling matrix by adding all possible hopping paths 
+between sites s1 and s2, considering:
+1. Periodic/antiperiodic boundary conditions
+2. Peierls phase factors from magnetic field B
+3. π-flux pattern encoded in link_inter dictionary
+
+# Arguments
+- `tunneling::AbstractMatrix`: Hopping matrix to be modified (in-place)
+- `lat::AbstractLattice`: Lattice structure with boundary conditions
+- `s1::Int, s2::Int`: Source and target site indices
+- `link_inter::Dict`: Inter-cell hopping amplitudes with (label1, label2, dx, dy) keys
+- `B::Float64`: Magnetic field strength for Peierls phase calculation
+
+# Physics Details
+- Peierls phase: exp(iB/2 * (x1+x2)(y2-y1)) accounts for vector potential A = (0, Bx)
+- Each boundary crossing can contribute ±1 phase factor from antiperiodic BC
+"""
 function apply_boundary_conditions!(
     tunneling::AbstractMatrix,
     lat::AbstractLattice,
@@ -125,14 +206,25 @@ function apply_boundary_conditions!(
     end
 end
 
+# π-flux intra-cell hopping amplitudes for DoubleKagome lattice
+# Each unit cell has 6 sites arranged as two triangular motifs:
+# Sites 1,2,3 form one triangle; sites 4,5,6 form another
+# The hopping pattern creates π-flux through specific plaquettes
+#
+# Key for AI understanding:
+# - Positive values (+1): Normal hopping amplitude
+# - Negative values (-1): Hopping with π phase (sign flip)
+# - The pattern ensures each triangular plaquette accumulates π flux
+# - Symmetric entries (i,j) and (j,i) have same amplitude (Hermitian hopping)
 const pi_link_in = Dict(
-    (1, 2) => 1,
+    (1, 2) => 1,   # Triangle 1: sites 1-2-3
     (1, 3) => 1,
     (2, 3) => 1,
-    (2, 4) => -1,
-    (4, 6) => 1,
+    (2, 4) => -1,  # Inter-triangle connection with π phase
+    (4, 6) => 1,   # Triangle 2: sites 4-5-6  
     (4, 5) => 1,
     (5, 6) => 1,
+    # Hermitian conjugates
     (2, 1) => 1,
     (3, 1) => 1,
     (3, 2) => 1,
@@ -142,20 +234,48 @@ const pi_link_in = Dict(
     (6, 5) => 1,
 )
 
-# (lable1, label2, dx, dy)
+# π-flux inter-cell hopping amplitudes for DoubleKagome lattice
+# Format: (site_label1, site_label2, dx, dy) => hopping_amplitude
+# where (dx, dy) are lattice vector coefficients: target_cell = source_cell + dx*a1 + dy*a2
+#
+# Physical interpretation:
+# - These hoppings connect sites in different unit cells
+# - The π-flux constraint requires specific sign patterns
+# - Negative amplitudes (-1) create π phase shifts
+# - The pattern ensures flux conservation across the entire lattice
+#
+# Example: (3, 5, -1, 1) => -1 means:
+# - Hopping from site 3 to site 5 in the cell at (-a1 + a2) relative position
+# - Amplitude is -1 (includes π phase)
 const pi_link_inter = Dict(
-    (3, 5, -1, 1) => -1,
-    (3, 1, 0, 1) => -1,
-    (6, 2, 0, 1) => -1,
-    (6, 4, 0, 1) => 1,
-    (5, 1, 1, 0) => 1,
-    (1, 5, -1, 0) => 1,
-    (1, 3, 0, -1) => -1,
-    (2, 6, 0, -1) => -1,
-    (4, 6, 0, -1) => 1,
-    (5, 3, 1, -1) => -1,
+    (3, 5, -1, 1) => -1,  # Site 3 to site 5 in neighboring cell
+    (3, 1, 0, 1) => -1,   # Site 3 to site 1 in cell at +a2
+    (6, 2, 0, 1) => -1,   # Site 6 to site 2 in cell at +a2
+    (6, 4, 0, 1) => 1,    # Site 6 to site 4 in cell at +a2
+    (5, 1, 1, 0) => 1,    # Site 5 to site 1 in cell at +a1
+    (1, 5, -1, 0) => 1,   # Site 1 to site 5 in cell at -a1
+    (1, 3, 0, -1) => -1,  # Site 1 to site 3 in cell at -a2
+    (2, 6, 0, -1) => -1,  # Site 2 to site 6 in cell at -a2
+    (4, 6, 0, -1) => 1,   # Site 4 to site 6 in cell at -a2
+    (5, 3, 1, -1) => -1,  # Site 5 to site 3 in cell at +a1-a2
 )
 
+"""    
+    get_site_coord(lat::AbstractLattice, s::Int) -> Vector{Float64}
+
+Calculate the real-space coordinate of site `s` in the lattice.
+
+Combines the unit cell position with the intra-cell site offset to give
+the absolute position in real space. Essential for calculating Peierls phases
+and analyzing spatial correlations.
+
+# Arguments
+- `lat::AbstractLattice`: Lattice structure
+- `s::Int`: Site index (1-indexed)
+
+# Returns
+- `Vector{Float64}`: [x, y] coordinate in real space
+"""
 function get_site_coord(lat::AbstractLattice, s::Int)
     label = (s - 1) % 6
     uc_coord = unitcell_coord(lat, s)
@@ -233,7 +353,32 @@ function Hmat(lat::DoubleKagome; link_in = pi_link_in, link_inter = pi_link_inte
     # from the sign of `-t`
 end
 
-# temporarily separate the N_up and N_down subspaces
+"""    
+    orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int) -> (Matrix{ComplexF64}, Matrix{ComplexF64})
+
+Compute the occupied spinon orbitals for the quantum spin liquid ground state.
+
+In the spinon mean-field theory:
+1. Spins are fractionalized into spinons (fermionic particles carrying spin-1/2)
+2. The Hamiltonian H_mat describes spinon hopping on the lattice
+3. Ground state is a filled Fermi sea of the lowest-energy spinon states
+4. Separate up and down spinon sectors (SU(2) symmetry)
+
+# Arguments
+- `H_mat::Matrix{ComplexF64}`: Single-particle spinon Hamiltonian matrix
+- `N_up::Int`: Number of up-spin spinons to fill
+- `N_down::Int`: Number of down-spin spinons to fill
+
+# Returns
+- `(U_up, U_down)`: Matrices whose columns are the occupied spinon orbitals
+  - `U_up`: N_up lowest eigenvectors for up spinons
+  - `U_down`: N_down lowest eigenvectors for down spinons
+
+# Physics Notes
+- The spinon filling typically corresponds to the original spin-1/2 density
+- For a spin-1/2 system: N_up + N_down = total number of spins
+- The specific choice of N_up, N_down determines the magnetic properties
+"""
 function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
     # search_num = max(N_up, N_down)
     # get sampling ensemble U_up and U_down
@@ -247,6 +392,31 @@ function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
     return U_up, U_down
 end
 
+"""    
+    Hamiltonian
+
+Complete specification of the spinon mean-field Hamiltonian for quantum Monte Carlo simulations.
+
+This structure contains all information needed for Variational 
+Monte Carlo calculations of quantum spin liquid properties:
+
+# Fields
+- `N_up::Int`: Number of up-spin spinons (determines spin sector)
+- `N_down::Int`: Number of down-spin spinons
+- `U_up::Matrix{ComplexF64}`: Occupied up-spinon orbitals (columns are eigenvectors)
+- `U_down::Matrix{ComplexF64}`: Occupied down-spinon orbitals
+- `H_mat::Matrix{ComplexF64}`: Single-particle spinon Hamiltonian matrix
+- `nn::AbstractArray`: List of nearest-neighbor bonds for efficient iteration
+
+# Usage in Monte Carlo
+- U_up, U_down define the reference state (filled Fermi sea)
+- H_mat provides the hopping amplitudes for Monte Carlo updates
+- nn specifies which bonds to consider in interaction terms
+
+# Physical Interpretation
+- Represents a quantum spin liquid state where spins are fractionalized
+- Correlations arise from quantum fluctuations around the mean-field state
+"""
 struct Hamiltonian
     N_up::Int
     N_down::Int
@@ -256,6 +426,24 @@ struct Hamiltonian
     nn::AbstractArray
 end
 
+"""    
+    get_nn(H_mat::AbstractMatrix) -> Vector{Tuple{Int,Int}}
+
+Extract nearest-neighbor bond list from the Hamiltonian matrix.
+
+Finds all non-zero off-diagonal elements in the upper triangular part of H_mat,
+which correspond to hopping terms between connected sites. Essential for
+efficient Monte Carlo sampling since we only need to consider active bonds.
+
+# Arguments
+- `H_mat::AbstractMatrix`: Hamiltonian matrix (typically hermitian)
+
+# Returns
+- `Vector{Tuple{Int,Int}}`: List of (i,j) pairs where i < j and H_mat[i,j] ≠ 0
+
+# Notes
+- Only upper triangular elements to avoid double-counting
+"""
 function get_nn(H_mat::AbstractMatrix)
     # Get upper triangular non-zero elements
     indices = findall(!iszero, UpperTriangular(H_mat))
@@ -263,6 +451,32 @@ function get_nn(H_mat::AbstractMatrix)
 end
 
 
+"""    
+    Hamiltonian(N_up, N_down, lat; link_in=pi_link_in, link_inter=pi_link_inter, B=0.0)
+
+Construct a complete Hamiltonian structure for quantum Monte Carlo simulations.
+
+This is the main constructor that builds everything needed for SSE Monte Carlo:
+1. Constructs the single-particle spinon Hamiltonian matrix
+2. Diagonalizes it to find the occupied orbitals
+3. Extracts the nearest-neighbor bond structure
+4. Packages everything for efficient Monte Carlo usage
+
+# Arguments
+- `N_up::Int, N_down::Int`: Number of up/down spinons (determines magnetic sector)
+- `lat::AbstractLattice`: Lattice structure (typically DoubleKagome)
+- `link_in`: Intra-cell hopping dictionary (default: π-flux pattern)
+- `link_inter`: Inter-cell hopping dictionary (default: π-flux pattern)
+- `B::Float64`: Magnetic field strength for Peierls phases (default: 0.0)
+
+# Returns
+- `Hamiltonian`: Complete structure ready for Monte Carlo simulations
+
+# Physics Notes
+- The choice of N_up, N_down determines the spin sector being studied
+- For spin-1/2 systems: N_up + N_down = number of original spins
+- Different (N_up, N_down) can access different quantum phases
+"""
 function Hamiltonian(
     N_up::Int,
     N_down::Int,
@@ -278,19 +492,41 @@ function Hamiltonian(
 end
 
 
-"""
+"""    
     Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int}) -> Float64
 
-``Sz = 1/2 (f^†_{↑} f_{↑} - f^†_{↓} f_{↓})``
-Calculate the z-component of spin at site `i` given up and down spin configurations.
+Calculate the z-component of spin at site `i` in the spinon representation.
 
-Returns:
-    +1/2 for up spin
-    -1/2 for down spin
+In the spinon formulation, the original spin operators are written as:
+- S^z_i = 1/2 (f^†_{i↑} f_{i↑} - f^†_{i↓} f_{i↓})
+- S^+_i = f^†_{i↑} f_{i↓}, S^-_i = f^†_{i↓} f_{i↑}
 
-Throws:
-    ArgumentError: if site is doubly occupied or empty
-    BoundsError: if i is outside the valid range
+where f_{iσ} are spinon annihilation operators. The constraint is exactly one 
+spinon per site: n_{i↑} + n_{i↓} = 1 (no double occupancy or empty sites).
+
+# Arguments
+- `i::Int`: Site index (1-indexed)
+- `kappa_up::Vector{Int}`: Up-spinon configuration (0 = empty, nonzero = occupied)
+- `kappa_down::Vector{Int}`: Down-spinon configuration
+
+# Returns
+- `Float64`: +0.5 for up spin, -0.5 for down spin
+
+# Exceptions
+- `ArgumentError`: If site is doubly occupied or empty (violates spinon constraint)
+- `BoundsError`: If i is outside valid range [1, length(kappa_up)]
+- `DimensionMismatch`: If kappa_up and kappa_down have different lengths
+
+# Physics Notes
+- This enforces the constraint that each site has exactly one spinon
+- Configurations violating the constraint (empty or doubly occupied) are unphysical
+- Used in Monte Carlo to measure local magnetization and Ising interactions
+- The spinon constraint is fundamental to the validity of the spin liquid state
+
+# Performance Notes
+- Marked @inline for performance in Monte Carlo loops
+- Uses @boundscheck for optional bounds checking
+- Calls is_occupied() helper function for spinon occupancy detection
 """
 @inline function Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     # Bounds check
@@ -329,6 +565,31 @@ Throws:
 end
 
 
+"""    
+    SzInteraction!(xprime, kappa_up, kappa_down, i, j)
+
+Compute the Ising (S^z S^z) interaction term for the Heisenberg Hamiltonian.
+
+For the Heisenberg model H = J ∑_{<i,j>} (S^+_i S^-_j + S^-_i S^+_j + S^z_i S^z_j),
+this function handles the S^z_i S^z_j term, which is diagonal in the spinon basis.
+
+The Ising term doesn't change the spinon configuration, so it contributes to the
+identity component of the operator expansion (stored with key (-1,-1,-1,-1)).
+
+# Arguments  
+- `xprime::Dict`: Dictionary storing operator expansion coefficients
+- `kappa_up::Vector{Int}`: Current up-spinon configuration
+- `kappa_down::Vector{Int}`: Current down-spinon configuration  
+- `i::Int, j::Int`: Sites for the interaction
+
+# Side Effects
+- Modifies xprime[(-1,-1,-1,-1)] by adding Sz(i) * Sz(j)
+
+# Physics Notes
+- This is the "easy-axis" part of the Heisenberg interaction
+- Diagonal in the occupation basis, doesn't create/destroy spinons
+- Combined with spinInteraction!() to give the full Heisenberg model
+"""
 function SzInteraction!(
     xprime::Dict,
     kappa_up::Vector{Int},
@@ -342,17 +603,35 @@ function SzInteraction!(
     return nothing
 end
 
-"""
-    spinInteraction!(xprime::Dict, kappa_up::Vector{Int}, kappa_down::Vector{Int}, i::Int, j::Int)
+"""    
+    spinInteraction!(xprime, kappa_up, kappa_down, i, j)
 
-Compute the spin flip term 1/2(S+_i S-_j + S-_i S+_j) contribution to xprime.
+Compute the transverse (spin-flip) part of the Heisenberg interaction.
 
+For the Heisenberg Hamiltonian H = J ∑_{<i,j>} (S^+_i S^-_j + S^-_i S^+_j + S^z_i S^z_j),
+this function handles the transverse terms S^+_i S^-_j + S^-_i S^+_j.
 
-The function handles two cases:
-1. S+_i S-_j: when j has up spin and i has down spin
-2. S-_i S+_j: when i has up spin and j has down spin
+In the spinon representation:
+- S^+_i S^-_j = f^†_{i↑} f_{i↓} f^†_{j↓} f_{j↑} (flips spins at both sites)
+- S^-_i S^+_j = f^†_{i↓} f_{i↑} f^†_{j↑} f_{j↓} (flips spins at both sites)
 
-Each case contributes with coefficient 1/2.
+These terms change the spinon configuration and are the source of quantum fluctuations.
+
+# Arguments
+- `xprime::Dict`: Dictionary storing new configurations and their amplitudes
+- `kappa_up::Vector{Int}`: Current up-spinon configuration
+- `kappa_down::Vector{Int}`: Current down-spinon configuration
+- `i::Int, j::Int`: Sites for the spin-flip interaction
+
+# Side Effects
+- Adds entries to xprime for each allowed spin-flip process
+- Key format: (new_up_site, old_up_orbital, new_down_site, old_down_orbital)
+- Amplitude: -1/2 for each allowed process (negative from Heisenberg coupling)
+
+# Physics Notes
+- Only processes that respect the constraint (one spinon per site) are allowed
+- Creates quantum entanglement between different spinon configurations
+- Essential for accessing quantum spin liquid physics beyond mean-field
 """
 function spinInteraction!(
     xprime::Dict,
@@ -393,10 +672,41 @@ function spinInteraction!(
 end
 
 
-"""
+"""    
+    getxprime(Ham::Hamiltonian, kappa_up, kappa_down) -> Dict{NTuple{4,Int}, Float64}
 
-return ``|x'> = H|x>``  where ``H`` is the Heisenberg Hamiltonian
-Note ``|x>`` here should also be a Mott state.
+Compute the action of the Heisenberg Hamiltonian on a spinon configuration.
+
+This is the core function for Stochastic Series Expansion (SSE) Monte Carlo.
+Given a spinon configuration |κ_up, κ_down⟩, it computes all configurations 
+|κ'_up, κ'_down⟩ that can be reached by applying H, along with their amplitudes.
+
+The result is H|κ⟩ = Σ_κ' xprime[κ'] |κ'⟩, where xprime encodes the expansion.
+
+# Arguments
+- `Ham::Hamiltonian`: Complete Hamiltonian specification
+- `kappa_up::Vector{Int}`: Current up-spinon configuration
+- `kappa_down::Vector{Int}`: Current down-spinon configuration
+
+# Returns
+- `Dict{NTuple{4,Int}, Float64}`: Dictionary mapping configurations to amplitudes
+  - Key (-1,-1,-1,-1): Diagonal contribution (Ising terms)
+  - Key (i,l_up,j,l_down): Off-diagonal contribution from spin-flip at sites i,j
+
+# Algorithm
+1. Iterate over all nearest-neighbor bonds in Ham.nn
+2. For each bond, compute Ising (S^z S^z) and transverse (S^+ S^- + S^- S^+) terms
+3. Accumulate results in xprime dictionary
+
+# Usage in Monte Carlo
+- Called during each Monte Carlo update to propose new configurations
+- The amplitudes determine acceptance probabilities for updates
+- Essential for sampling the quantum mechanical evolution
+
+# Physics Notes
+- |x⟩ must be a valid Mott state (one spinon per site)
+- The Hamiltonian H is the original Heisenberg model, not the mean-field one
+- Combines both diagonal (Ising) and off-diagonal (transverse) contributions
 """
 @inline function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     nn = Ham.nn
@@ -409,10 +719,45 @@ Note ``|x>`` here should also be a Mott state.
     return xprime
 end
 
-@doc raw"""
+@doc raw"""    
+    getOL(mc::AbstractMC, kappa_up, kappa_down) -> Float64
 
-The observable ``O_L = \frac{<x|H|\psi_G>}{<x|\psi_G>}``
-The Hamiltonian should be the real one!
+Compute the local energy estimator for quantum Monte Carlo.
+
+Calculates the observable O_L = ⟨x|H|ψ_G⟩/⟨x|ψ_G⟩, which provides an unbiased
+estimator of the ground state energy in the Stochastic Series Expansion method.
+
+In the spinon mean-field framework:
+- |ψ_G⟩ is the Slater Determinant spinon state (Gutzwiller projected)
+- |x⟩ = |κ_up⟩ ⊗ |κ_down⟩ is a particular spinon configuration
+- H is the original Heisenberg Hamiltonian (not the mean-field one!)
+
+The ratio gives the local contribution to the energy from configuration |x⟩.
+
+# Arguments
+- `mc::AbstractMC`: Monte Carlo state containing W_up, W_down matrices
+- `kappa_up::Vector{Int}`: Current up-spinon configuration
+- `kappa_down::Vector{Int}`: Current down-spinon configuration
+
+# Returns
+- `Float64`: Local energy contribution from this configuration
+
+# Algorithm
+1. Compute H|x⟩ using getxprime() to get all reachable configurations
+2. For diagonal terms: directly add the Ising contributions
+3. For off-diagonal terms: weight by the wavefunction amplitude ratios W_up, W_down
+4. Sum all contributions to get the local energy
+
+# Physics Notes
+- This is the "local energy" in variational Monte Carlo terminology
+- Fluctuations in O_L reflect the quality of the trial wavefunction
+- Used to measure energy and other observables in quantum spin liquids
+- The Hamiltonian H must be the original physical one, not the mean-field approximation
+
+# Performance Notes
+- Critical function called in every Monte Carlo step
+- Bounds checking disabled with @inbounds for performance
+- Uses efficient iteration over pairs() for dictionary access
 """
 @inline function getOL(mc::AbstractMC, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"

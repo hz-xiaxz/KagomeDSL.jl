@@ -31,9 +31,39 @@ struct DoubleKagome <: AbstractLattice
 end
 
 """
-double triangle unit cell Kagome lattice
+    DoubleKagome(t::Float64, n1::Int, n2::Int, PBC::Tuple{Bool,Bool}; antiPBC=(false,false), trunc=Inf)
 
-note `n1` here is still the number of repititions of triangle in the `a1` direction, so `n1` is asserted to be even. The total number is `n1 * n2 * 3` sites.
+Construct a double unit cell Kagome lattice with 6 sites per unit cell.
+
+Unlike a single unit cell Kagome lattice (which has 3 sites per unit cell forming one triangle),
+the DoubleKagome lattice contains 6 sites per unit cell arranged in two triangular sublattices.
+This structure is useful for studying systems with enlarged unit cells or specific magnetic
+ordering patterns that require the doubled cell geometry.
+
+# Arguments
+- `t::Float64`: Parameter defining the equilateral triangle side length (lattice constant = 2t)
+- `n1::Int`: Number of unit cell repetitions in the a1 direction (must be even)
+- `n2::Int`: Number of unit cell repetitions in the a2 direction  
+- `PBC::Tuple{Bool,Bool}`: Periodic boundary conditions in (a1, a2) directions
+- `antiPBC::Tuple{Bool,Bool}`: Antiperiodic boundary conditions (default: (false, false))
+- `trunc::Float64`: Truncation parameter (default: Inf, unused in current implementation)
+
+# Returns
+- `DoubleKagome`: Lattice structure with `n1 * n2 * 3` total sites
+
+# Notes
+- The constraint `n1 % 2 == 0` ensures proper tiling of the double unit cell
+- Total number of sites is `n1 * n2 * 3` (though each unit cell has 6 sites, `n1` counts double-sized cells)
+- Actual number of unit cells is `(n1 ÷ 2) * n2`, each containing 6 sites
+- Lattice vectors: a1 = [4t, 0], a2 = [t, √3*t] 
+- Each unit cell contains 6 sites arranged in two triangular motifs
+
+# Example
+```julia
+# Create a 4×3 DoubleKagome lattice with periodic boundaries
+lat = DoubleKagome(1.0, 4, 3, (true, true))
+# Total sites: 4 * 3 * 3 = 36 sites (2 unit cells × 3 repetitions × 6 sites per unit cell)
+```
 """
 function DoubleKagome(
     t::Float64,
@@ -62,4 +92,6 @@ function DoubleKagome(
 end
 
 
-ns(lat::AbstractLattice) = lat.n1 * lat.n2 * 3
+# For DoubleKagome: 6 sites per unit cell, but n1 counts double-sized cells
+# so total sites = (n1 ÷ 2) * n2 * 6 = n1 * n2 * 3
+ns(lat::DoubleKagome) = lat.n1 * lat.n2 * 3

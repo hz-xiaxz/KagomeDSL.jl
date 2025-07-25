@@ -10,8 +10,7 @@ The project follows the standard Julia package structure:
     -   `KagomeDSL.jl`: The main module file.
     -   `Lattice.jl`: Defines the Kagome lattice structure and connectivity.
     -   `Hamiltonian.jl`: Code related to defining the physical model (e.g., Heisenberg Hamiltonian).
-    -   `MonteCarlo.jl`: Implementations of the Stochastic Series Expansion (SSE) Monte Carlo algorithm.
-    -   `Measurements.jl`: Functions for calculating physical observables (e.g., spin correlations, energy).
+    -   `MonteCarlo.jl`: Implementations of the Variational Monte Carlo algorithm.
 -   `test/`: Project tests.
     -   `runtests.jl`: The main test runner.
     -   Tests are organized per file to mirror the `src/` directory structure (e.g., `test-Hamiltonian.jl`).
@@ -212,7 +211,6 @@ For example, here is what good test code looks like:
 module test_completions
 
 using Test # Each module space needs to explicitly declare the code needed for execution
-using JETLS: some_completion_func
 
 function testcase_util(s::AbstractString)
     ...
@@ -240,20 +238,6 @@ end
 
 end # module test_completions
 ```
-
-Additionally, by using `@testset` as shown above, not only are tests hierarchized,
-but through integration with [TestRunner.jl](https://github.com/aviatesk/TestRunner.jl),
-you can also selectively execute specific `@testset`s, without executing the
-entire test file or test suite.
-If you're using this language server for development as well, you can run tests
-from code lenses or code actions within test files. If you need to run them from
-the command line, you can use commands like the following
-(assuming the `testrunner` executable is installed):
-```bash
-testrunner --verbose test/test_completions "some_completion_func"
-```
-Note that TestRunner.jl is still experimental.
-The most reliable way to run tests is still to execute test files standalone.
 
 ## Claude-Specific Guidelines
 
