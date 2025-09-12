@@ -10,7 +10,7 @@ The project follows the standard Julia package structure:
     -   `KagomeDSL.jl`: The main module file.
     -   `Lattice.jl`: Defines the Kagome lattice structure and connectivity.
     -   `Hamiltonian.jl`: Code related to defining the physical model (e.g., Heisenberg Hamiltonian).
-    -   `MonteCarlo.jl`: Implementations of the Variational Monte Carlo algorithm.
+    -   `MonteCarlo.jl`: Implementations of the Variational Monte Carlo (VMC) algorithm.
 -   `test/`: Project tests.
     -   `runtests.jl`: The main test runner.
     -   Tests are organized per file to mirror the `src/` directory structure (e.g., `test-Hamiltonian.jl`).
@@ -99,29 +99,19 @@ The core development loop is to:
   ...
   ```
 
-- For AI agents: **ONLY INCLUDE COMMENTS WHERE TRULY NECESSARY**.
+- **ONLY INCLUDE COMMENTS WHERE TRULY NECESSARY**.
   When the function name or implementation clearly indicates its purpose or
   behavior, redundant comments are unnecessary.
 
 - On the other hand, for general utilities that expected to be used in multiple
-  places in the language server, it's fine to use docstrings to clarify their
-  behavior. However, even in these cases, if the function name and behavior are
-  self-explanatory, no special docstring is needed.
-
-- Avoid unnecessary logs:
-  Don't clutter the language server log with excessive information.
-  If you must use print debugging, generally use `@info`/`@warn` behind the
-  `JETLS_DEV_MODE` flag, like this:
-  ```julia
-  if JETLS_DEV_MODE
-      @info ...
-  end
-  ```
+  places, it's fine to use docstrings to clarify their behavior. However, even
+  in these cases, if the function name and behavior are self-explanatory, no
+  special docstring is needed.
 
 ### Physics & Algorithm-Specific Guidance
 
 -   **Model Definition**: Physical models are defined by the `Hamiltonian` and the `Lattice`. These should contain all necessary parameters (e.g., `J`, lattice size), making them easy to pass to solver functions.
--   **Algorithm Abstraction**: The core logic of an algorithm (e.g., an SSE update step) is separated from the specific model it's applied to. This is a key design principle of the project.
+-   **Algorithm Abstraction**: The core logic of an algorithm (e.g., a VMC update step) is separated from the specific model it's applied to. This is a key design principle of the project.
 -   **Reproducibility**:
     -   All simulations must be runnable from a script in `scripts/` that saves the parameters used.
     -   **Always seed the random number generator** (using `Random; Random.seed!(1234)`) for Monte Carlo simulations to ensure results are reproducible.
@@ -165,38 +155,17 @@ unnecessary startup utilities.
 
 ### Test Code Organization
 
-Testing language server functionality is challenging.
-To fully test such functionality, you need to start a server loop,
-and send several requests to that server that mimic realistic user interactions.
+Testing functionality is challenging. To fully test such functionality, you need
+to set up proper test environments and send requests that mimic realistic usage.
 
-However, writing such tests is still somewhat tricky.
-Therefore, unless explicitly requested by the core developers, you don't need
-to write test code to fully test newly implemented language server features.
-It's generally sufficient to test important subroutines that are easy to test
-in the implementation of that language server feature.
+However, writing comprehensive tests can be tricky. Therefore, unless explicitly
+requested by the core developers, you don't need to write test code to fully
+test newly implemented features. It's generally sufficient to test important
+subroutines that are easy to test in the implementation.
 
-Test code for new language server features should be written in files that
-define independent module spaces with a `test_` prefix.
-Then include these files from [`test/runtests.jl`](./test/runtests.jl).
+Test code should be written in files that define independent module spaces with
+a `test_` prefix. Then include these files from [`test/runtests.jl`](./test/runtests.jl).
 This ensures that these files can be run independently from the REPL.
-For example, test code for the "completion" feature would be in a file like
-this:
-> test/test_completions.jl
-```julia
-module test_completions
-using Test # Each module space needs to explicitly declare the code needed for execution
-...
-end # module test_completions
-```
-And `test/test_completions.jl` is included from `test/runtests.jl` like this:
-> test/runtests.jl
-```julia
-@testset "JETLS.jl" begin
-    ...
-    @testset "completions" include("test_completions.jl")
-    ...
-end
-```
 
 In each test file, you are encouraged to use `@testset "testset name"` to
 organize our tests cleanly. For code clarity, unless specifically necessary,
@@ -205,38 +174,30 @@ blocks, and instead place them at the top level.
 
 Also, you are encouraged to use `let`-blocks to ensure that names aren't
 unintentionally reused between multiple test cases.
+
 For example, here is what good test code looks like:
-> test/test_completions.jl
 ```julia
-module test_completions
+module test_physics
 
-using Test # Each module space needs to explicitly declare the code needed for execution
+using Test
 
-function testcase_util(s::AbstractString)
-    ...
-end
-function with_testcase(s::AbstractString)
-    ...
+function testcase_util(param)
+    # Test utility function - calculate something physics-related
+    return param^2  # Example: energy calculation
 end
 
-@testset "some_completion_func" begin
-    let s = "..."
-        ret = some_completion_func(testcase_util(s))
-        @test test_with(ret)
+@testset "physics_calculations" begin
+    let param = 1.0
+        result = testcase_util(param)
+        @test result ≈ 1.0
     end
-    let s = "..."
-        ret = some_completion_func(testcase_util(s))
-        @test test_with(ret)
-    end
-
-    # or `let` is unnecessary when testing with function scope
-    with_testcase(s) do case
-        ret = some_completion_func(case)
-        @test test_with(ret)
+    let param = 2.0
+        result = testcase_util(param)
+        @test result ≈ 4.0
     end
 end
 
-end # module test_completions
+end # module test_physics
 ```
 
 ## Claude-Specific Guidelines
@@ -290,16 +251,28 @@ Follow these guidelines to maintain a clean and informative git history.
 
 -   **Title**: Use the format `scope: Brief summary`. The scope should be a component of the project.
     -   **Examples**:
-        -   `feat(mc): Add parallel tempering support to SSE`
+        -   `feat(mc): Add parallel tempering support to VMC`
         -   `fix(hamiltonian): Correct sign in transverse field term`
         -   `docs(readme): Update installation instructions`
         -   `test(lattice): Add test for periodic boundary conditions`
         -   `refactor(measure): Improve performance of correlation function`
 -   **Body**: In the commit body, explain the "what" and "why" of the change. Do not just repeat the "how". If the change fixes a GitHub issue, add `Fixes #123` to the end of the body.
 # Tips
-1. use `eachindex(iterator)` instead of `1:length(iterator)` to avoid unnecessary allocations.
-2. Use `@views` to avoid unnecessary allocations when slicing arrays.
-3. Always use `Makie` to visualize, don't use `Plots.jl` or `Gadfly.jl`. 2D use `CairoMakie`, 3D use `WGLMakie`.
-4. Use `Figure(size=)` instead of `Figure(resolution=)` to set the figure size, the latter is deprecated. Most time, don't use `resolution` at all.
-5. Don't use deprecated `arrows` in ``Makie`, use `arrows2d, arrows3d` instead.
-6. When writing scripts, avoid using `\!` this is invalid, use `!` instead.
+
+## Performance Tips
+1. Use `eachindex(iterator)` instead of `1:length(iterator)` to avoid unnecessary allocations
+2. Use `@views` to avoid unnecessary allocations when slicing arrays
+
+## Visualization Tips  
+3. Always use `Makie` ecosystem for visualization:
+   - 2D plots: Use `CairoMakie`
+   - 3D/interactive plots: Use `GLMakie` or `WGLMakie`
+4. Use `Figure(size=...)` instead of deprecated `Figure(resolution=...)`
+5. Use `arrows2d`/`arrows3d` instead of deprecated `arrows` function
+
+## Code Style Tips
+6. When writing scripts, use `!` instead of invalid `\!` notation
+
+## Documentation Tips
+7. Use double backticks `` `` to document LaTeX-formatted mathematical equations
+   - Example: ``⟨x|cᵢ⁺cⱼ|ψ⟩/⟨x|ψ⟩`` instead of ⟨x|cᵢ⁺cⱼ|ψ⟩/⟨x|ψ⟩

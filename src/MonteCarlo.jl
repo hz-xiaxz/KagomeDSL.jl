@@ -1,3 +1,19 @@
+"""
+    MC <: AbstractMC
+
+Monte Carlo simulation state for quantum spin systems on the Kagome lattice.
+
+# Fields
+- `Ham::Hamiltonian`: The Hamiltonian describing the physical system
+- `kappa_up::Vector{Int}`: Configuration vector for up-spin electrons
+- `kappa_down::Vector{Int}`: Configuration vector for down-spin electrons  
+- `W_up::AbstractMatrix`: One-particle Green's function matrix for up-spin electrons
+- `W_down::AbstractMatrix`: One-particle Green's function matrix for down-spin electrons
+- `W_up_col_cache::AbstractVector`: Cache vector for column operations on W_up
+- `W_up_row_cache::AbstractVector`: Cache vector for row operations on W_up
+- `W_down_col_cache::AbstractVector`: Cache vector for column operations on W_down
+- `W_down_row_cache::AbstractVector`: Cache vector for row operations on W_down
+"""
 mutable struct MC <: AbstractMC
     Ham::Hamiltonian
     kappa_up::Vector{Int}
@@ -11,6 +27,31 @@ mutable struct MC <: AbstractMC
     W_down_row_cache::AbstractVector
 end
 
+"""
+    reevaluateW!(mc::MC)
+
+Recalculate the one-particle Green's function matrices W_up and W_down.
+
+This function reconstructs the Green's functions from the current spin configuration
+by solving the linear systems involving the tilde_U matrices.
+
+# Arguments
+- `mc::MC`: Monte Carlo state object
+
+# Algorithm
+1. Construct tilde_U matrices from current kappa configurations
+2. Solve linear systems: ``tilde_U_up \\ I`` and ``tilde_U_down \\ I``
+3. Compute Green's functions: ``W = U * (tilde_U \\ I)``
+
+# Note
+``U \\ I`` is numerically more stable than computing the inverse directly.
+
+The Green's function matrices W represent the one-particle propagators
+``⟨x|cᵢ⁺cⱼ|ψ⟩/⟨x|ψ⟩`` for the current configuration.
+
+Periodic re-evaluation is necessary to override numerical instability that
+accumulates from repeated rank-1 updates to the Green's function matrices.
+"""
 function reevaluateW!(mc::MC)
     # Calculate inverse matrices
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
@@ -27,16 +68,26 @@ end
 
 """
     tilde_U(U::AbstractMatrix, kappa::Vector{Int})
-------------
-Creates a tilde matrix by rearranging rows of U according to kappa indices.
 
-Parameters:
-- `U`: Source matrix of size (n × m)
-- `kappa`: Vector of indices where each non-zero value l indicates that row Rl of U
-          should be placed at row l of the output
+Construct the tilde_U matrix by selecting and rearranging rows from U.
 
-Returns:
+The tilde_U matrix is formed by selecting the rows of U corresponding to occupied
+sites (where kappa[l] ≠ 0) and placing them in the order specified by kappa.
+
+# Arguments
+- `U::AbstractMatrix`: Source matrix of size (n × m) where n is number of sites
+- `kappa::Vector{Int}`: Configuration vector where non-zero values indicate occupied sites
+
+# Returns
 - A matrix of size (m × m) with same element type as U
+
+# Throws
+- `DimensionMismatch`: If length(kappa) ≠ number of rows in U
+- `ArgumentError`: If kappa does not contain exactly m non-zero entries
+- `BoundsError`: If any non-zero kappa value is out of bounds
+
+# Note
+This matrix is used in the construction of the one-particle Green's function W.
 """
 function tilde_U(U::AbstractMatrix, kappa::Vector{Int})
     m = size(U, 2)
@@ -66,10 +117,17 @@ end
 """
     is_occupied(kappa::Vector{Int}, l::Int) -> Bool
 
-Check if site `l` is occupied in the kappa configuration vector.
+Check if site `l` is occupied in the configuration vector.
 
-Throws:
-    BoundsError: if l is outside the valid range of kappa
+# Arguments
+- `kappa::Vector{Int}`: Configuration vector where non-zero values indicate occupation
+- `l::Int`: Site index to check
+
+# Returns
+- `Bool`: true if site l is occupied (kappa[l] ≠ 0), false otherwise
+
+# Throws
+- `BoundsError`: if l is outside the valid range [1, length(kappa)]
 """
 @inline function is_occupied(kappa::Vector{Int}, l::Int)
     @boundscheck 1 ≤ l ≤ length(kappa) || throw(BoundsError(kappa, l))
@@ -78,9 +136,31 @@ end
 
 """
     MC(params::AbstractDict)
-------------
+
 Create a Monte Carlo object from a dictionary of parameters.
-This is the user-facing, high-level constructor.
+
+This is the user-facing, high-level constructor that initializes the Monte Carlo
+simulation state with appropriate dimensions and default configurations.
+
+# Arguments
+- `params::AbstractDict`: Dictionary containing simulation parameters
+
+# Required Parameters
+- `:n1::Int`: Number of unit cells in x-direction
+- `:n2::Int`: Number of unit cells in y-direction  
+- `:PBC::Tuple{Bool,2}`: Periodic boundary conditions
+- `:N_up::Int`: Number of up-spin electrons
+- `:N_down::Int`: Number of down-spin electrons
+
+# Optional Parameters
+- `:antiPBC::Tuple{Bool,2}`: Anti-periodic boundary conditions (default: (false, false))
+- `:lattice::Type`: Lattice type (default: DoubleKagome)
+- `:B::Float64`: Magnetic field strength (default: 0.0)
+- `:link_in::Function`: Intra-cell linking function (default: pi_link_in)
+- `:link_inter::Function`: Inter-cell linking function (default: pi_link_inter)
+
+# Returns
+- `MC`: Initialized Monte Carlo state object
 """
 function MC(params::AbstractDict)
     n1 = params[:n1]
@@ -106,10 +186,25 @@ end
 
 """
     MC(Ham, kappa_up, kappa_down, W_up, W_down)
-------------
+
 Create a Monte Carlo object from its core components.
-This constructor automatically creates the necessary cache arrays.
-It's useful for internal logic and testing.
+
+This constructor automatically creates the necessary cache arrays for efficient
+matrix updates. It's primarily used for internal logic and testing purposes.
+
+# Arguments
+- `Ham::Hamiltonian`: The Hamiltonian describing the physical system
+- `kappa_up::Vector{Int}`: Initial up-spin configuration vector
+- `kappa_down::Vector{Int}`: Initial down-spin configuration vector
+- `W_up::AbstractMatrix`: Initial one-particle Green's function for up-spin
+- `W_down::AbstractMatrix`: Initial one-particle Green's function for down-spin
+
+# Returns
+- `MC`: Monte Carlo state object with initialized cache arrays
+
+# Note
+The cache arrays enable zero-allocation updates of the Green's function matrices
+using rank-1 update operations.
 """
 function MC(
     Ham::Hamiltonian,
@@ -139,9 +234,23 @@ function MC(
 end
 
 """
-    update_W_matrices(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
-------------
-Update the W matrices
+    update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
+
+Update the one-particle Green's function matrices using rank-1 updates.
+
+This function performs simultaneous updates of both W_up and W_down matrices
+using the Sherman-Morrison formula for efficient matrix inversion updates.
+
+# Arguments
+- `mc::MC`: Monte Carlo state object
+- `K_up::Int`: Row index for up-spin matrix update
+- `K_down::Int`: Row index for down-spin matrix update  
+- `l_up::Int`: Column index for up-spin matrix update
+- `l_down::Int`: Column index for down-spin matrix update
+
+# Algorithm
+Performs rank-1 updates: `W' = W - (W[:,l] * (W[K,:] - δ_{l,:})') / W[K,l]`
+for both spin components using pre-allocated cache arrays.
 """
 function update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
     update_W!(mc.W_up, l_up, K_up, mc.W_up_col_cache, mc.W_up_row_cache)
@@ -149,10 +258,23 @@ function update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::I
 end
 
 """
-    update_W!(W::AbstractMatrix; l::Int, K::Int)
-------------
-Update the W matrix
-``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - \\delta_{l,j})``
+    update_W!(W::AbstractMatrix, l::Int, K::Int, col_cache::AbstractVector, row_cache::AbstractVector)
+
+Perform a rank-1 update on the Green's function matrix using Sherman-Morrison formula.
+
+# Arguments
+- `W::AbstractMatrix`: Green's function matrix to update
+- `l::Int`: Column index for the update
+- `K::Int`: Row index for the update
+- `col_cache::AbstractVector`: Pre-allocated cache for column operations
+- `row_cache::AbstractVector`: Pre-allocated cache for row operations
+
+# Algorithm
+Implements the Sherman-Morrison update:
+``W'_{I,j} = W_{I,j} - W_{I,l} / W_{K,l} * (W_{K,j} - δ_{l,j})``
+
+This represents a rank-1 update to the matrix inverse that maintains the
+Green's function relationship after a single-particle move.
 """
 function update_W!(
     W::AbstractMatrix,
@@ -173,31 +295,33 @@ end
 """
     init_conf_qr!(mc::MC, ns::Int, N_up::Int)
 
-Ref: Quantum Monte Carlo Approaches for Correlated Systems (Becca and Sorella, 2017) P130
+Initialize particle configurations using QR decomposition with column pivoting.
 
-As system size increases, ``<Φ|x>`` becomes exponentially small comparing to system size, inversely proportional to the dimension of the Hilbert space.
+Reference: Quantum Monte Carlo Approaches for Correlated Systems (Becca and Sorella, 2017) P130
 
-The smallness of init ``<Φ|x>`` will lead to numerical instability in the first computation of the W matrices, but not affecting the Markov chain sampling, since we always calculate ``\\frac{<Φ|x'>}{<Φ|x>}`` there, which shall not be a numerically instable number.
+As system size increases, ``⟨Φ|x⟩`` becomes exponentially small compared to system size,
+inversely proportional to the dimension of the Hilbert space.
 
-To avoid this issue we initializes the particle configurations `kappa_up` and `kappa_down` in the `mc` object
-using a deterministic method based on QR decomposition with column pivoting.
+The smallness of initial ``⟨Φ|x⟩`` leads to numerical instability in the first computation
+of the W matrices, but does not affect Markov chain sampling since we always calculate
+``⟨Φ|x'⟩/⟨Φ|x⟩``, which should not be numerically unstable.
 
-This approach is designed to select a set of sites for the up and down spin
-electrons that corresponds to a set of linearly independent rows from the `U_up` and
-`U_down` matrices, respectively. This maximizes the chances of producing a
-non-singular `tilde_U` matrix, avoiding the need for random trial-and-error.
+This method selects sites that maximize linear independence from the U matrices to
+ensure non-singular tilde_U matrices and avoid random trial-and-error initialization.
 
-The procedure is as follows:
-1.  It performs QR decomposition on `mc.Ham.U_up'` to select the `N_up` most
-    linearly independent rows (sites) for the up-spin electrons.
-2.  It then takes the remaining, unoccupied sites and performs a second QR
-    decomposition on the corresponding subset of `mc.Ham.U_down'` to select the
-    `N_down` sites for the down-spin electrons.
+# Arguments
+- `mc::MC`: Monte Carlo state object (modified in-place)
+- `ns::Int`: Total number of sites in the lattice
+- `N_up::Int`: Number of up-spin electrons
 
-Parameters:
-- `mc`: The Monte Carlo object, which will be modified in-place.
-- `ns`: The total number of sites in the lattice.
-- `N_up`: The number of up-spin electrons.
+# Algorithm
+1. Perform QR decomposition on `mc.Ham.U_up'` to select `N_up` most linearly independent
+   rows (sites) for up-spin electrons
+2. Use remaining unoccupied sites and perform QR decomposition on corresponding subset
+   of `mc.Ham.U_down'` to select `N_down` sites for down-spin electrons
+
+# Note
+This deterministic approach produces non-singular tilde_U matrices for stable Green's function initialization.
 """
 function init_conf_qr!(mc::MC, ns::Int, N_up::Int)
     # Use QR decomposition with pivoting to select linearly independent rows from U
@@ -233,10 +357,27 @@ function init_conf_qr!(mc::MC, ns::Int, N_up::Int)
 end
 
 """
-    find_initial_configuration!(mc::MC, rng::AbstractRNG, ns::Int, N_up::Int, n1::Int)
+    find_initial_configuration!(mc::MC, ns::Int, N_up::Int)
 
-Finds a non-singular initial configuration for the MC simulation.
-This version uses a deterministic QR-based method and should not require retries.
+Find a non-singular initial configuration for Monte Carlo simulation.
+
+This function uses a deterministic QR-based method to initialize particle
+configurations and compute the initial Green's function matrices.
+
+# Arguments
+- `mc::MC`: Monte Carlo state object (modified in-place)
+- `ns::Int`: Total number of sites in the lattice
+- `N_up::Int`: Number of up-spin electrons
+
+# Algorithm
+1. Initialize configurations using QR decomposition with column pivoting
+2. Construct tilde_U matrices from the initialized configurations
+3. Solve linear systems to compute Green's function matrices
+4. Handle singular matrix exceptions with informative error messages
+
+# Throws
+- `ErrorException`: If QR-based configuration produces singular matrices,
+  indicating potential rank deficiency in the Hamiltonian
 """
 function find_initial_configuration!(mc::MC, ns::Int, N_up::Int)
     init_conf_qr!(mc, ns, N_up)
@@ -271,12 +412,25 @@ end
 
 """
     Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
-------------
-Initialize the Monte Carlo object
-`params`
-* `n1` : `Int` number of cells in x direction
-* `n2` : `Int` number of cells in y direction
-* `PBC` : `Tuple{Bool,2}` boundary condition, e.g. (false, false)
+
+Initialize the Monte Carlo object for Carlo.jl framework integration.
+
+This function sets up the Monte Carlo simulation by finding an initial
+non-singular configuration using QR-based initialization.
+
+# Arguments
+- `mc::MC`: Monte Carlo state object
+- `ctx::MCContext`: Carlo.jl context object
+- `params::AbstractDict`: Simulation parameters dictionary
+
+# Parameters Used
+- `:n1::Int`: Number of unit cells in x-direction
+- `:n2::Int`: Number of unit cells in y-direction
+- `:N_up::Int`: Number of up-spin electrons
+
+# Note
+This function integrates with the Carlo.jl framework and is called automatically
+during simulation initialization to prepare the Monte Carlo state.
 """
 @inline function Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
     n1 = params[:n1]
@@ -286,6 +440,23 @@ Initialize the Monte Carlo object
     find_initial_configuration!(mc, ns, N_up)
 end
 
+"""
+    Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector) -> Int
+
+Count the number of valid spin exchange moves between neighboring sites.
+
+This function calculates the number of neighboring site pairs where one site
+is occupied by an up-spin electron and the other by a down-spin electron,
+indicating potential spin exchange moves.
+
+# Arguments
+- `nn::AbstractArray`: Array of neighbor bonds (site pairs)
+- `kappa_up::AbstractVector`: Up-spin configuration vector
+- `kappa_down::AbstractVector`: Down-spin configuration vector
+
+# Returns
+- `Int`: Number of valid spin exchange move opportunities
+"""
 function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVector)
     # iterate over all possible moves
     # if two sites connected by a bond, check if they are occupied by different spins
@@ -302,6 +473,27 @@ function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVect
     return count
 end
 
+"""
+    update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_down::Int)
+
+Update both Green's function matrices and configuration vectors for a spin exchange move.
+
+This function performs the complete update for a spin exchange between sites i and site,
+including both the Green's function matrices (W_up, W_down) and the configuration
+vectors (kappa_up, kappa_down).
+
+# Arguments
+- `mc`: Monte Carlo state object
+- `flag::Int`: Move type indicator (1 or 2)
+- `i::Int`: First site index
+- `site::Int`: Second site index
+- `l_up::Int`: Up-spin label to move
+- `l_down::Int`: Down-spin label to move
+
+# Move Types
+- `flag = 1`: Move up-spin from site i to site, down-spin from site to i
+- `flag = 2`: Move up-spin from site to i, down-spin from site i to site
+"""
 function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_down::Int)
     if flag == 1
         # Update W matrices
@@ -321,14 +513,27 @@ end
 """
     Carlo.sweep!(mc::MC, ctx::MCContext) -> Nothing
 
-Perform one Monte Carlo sweep for the Mott state simulation. This implements
-a two-spin swap update where electrons can exchange positions between different
-spin states at occupied sites.
+Perform one Monte Carlo sweep for Mott state simulation.
 
-Note:
+This function implements a two-spin swap update where electrons can exchange
+positions between different spin states at occupied neighboring sites.
+
+# Arguments
+- `mc::MC`: Monte Carlo state object
+- `ctx::MCContext`: Carlo.jl context object
+
+# Algorithm
+1. Calculate number of valid spin exchange moves Zμ
+2. Use Metropolis acceptance criterion based on move probability
+3. Select random neighbor bond for potential exchange
+4. Calculate acceptance ratio using Green's function matrix elements
+5. Update configurations if move is accepted
+6. Periodically re-evaluate W matrices to maintain numerical stability
+
+# Note
 The W matrices are re-evaluated periodically (every n_occupied sweeps) to
-maintain numerical stability. If the re-evaluation fails due to singular
-matrices, a warning is issued and the simulation continues.
+override numerical instability from repeated rank-1 updates. If re-evaluation
+fails due to singular matrices, a warning is issued and simulation continues.
 """
 @inline function Carlo.sweep!(mc::MC, ctx::MCContext)
     # MCMC scheme for Mott state
@@ -401,6 +606,25 @@ matrices, a warning is issued and the simulation continues.
     return nothing
 end
 
+"""
+    @inline function Carlo.measure!(mc::MC, ctx::MCContext)
+
+Measures observables during the simulation and collects data.
+
+This function is called periodically during the simulation to measure
+physical observables like local energy and collect them for postprocessing.
+
+# Arguments
+- `mc::MC`: Monte Carlo state object
+- `ctx::MCContext`: Carlo.jl context object
+
+# Measured Quantities
+- `:OL`: Local energy estimator `getOL(mc, mc.kappa_up, mc.kappa_down)`
+
+# Note
+Measurements are taken periodically (every n_occupied sweeps) to reduce
+correlation between samples and improve measurement efficiency.
+"""
 @inline function Carlo.measure!(mc::MC, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
@@ -409,7 +633,7 @@ end
     end
 end
 
-"""    
+"""
     Carlo.register_evaluables(::Type{MC}, eval::Evaluator, params::AbstractDict)
 
 Register postprocessing evaluators for final analysis after Monte Carlo simulation.
@@ -428,19 +652,19 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
 
 # Registered Evaluables
 - `:energy`: Computes the energy per site from local energy measurements
-  - Formula: energy = ⟨OL⟩ / ns, where ns = total number of sites
+  - Formula: ``energy = ⟨OL⟩ / ns``, where ns = total number of sites
   - Input: Raw :OL measurements collected during simulation
   - Output: Normalized energy per site for final results
 
 # Usage in Carlo.jl Workflow
-1. **During simulation**: Carlo.measure!() collects raw :OL data
+1. **During simulation**: `Carlo.measure!()` collects raw `:OL` data
 2. **After simulation**: This function defines how to postprocess the data
 3. **Final analysis**: Carlo.jl automatically applies these evaluators to compute final results
 4. **Merge operations**: Used when combining data from multiple simulation runs
 
 # Physics Notes
-- OL represents the local energy estimator ⟨x|H|ψ_G⟩/⟨x|ψ_G⟩
-- Normalization by ns gives energy per site (intensive quantity)
+- `OL` represents the local energy estimator ``⟨x|H|ψ_G⟩/⟨x|ψ_G⟩``
+- Normalization by `ns` gives energy per site (intensive quantity)
 - Essential for comparing results across different system sizes
 
 # Performance Notes
@@ -462,12 +686,12 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
     return nothing
 end
 
-"""    
+"""
     Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
 
 Save Monte Carlo state for resuming simulations or postprocessing analysis.
 
-**Purpose**: Serializes the current spinon configuration to an HDF5 file for later 
+**Purpose**: Serializes the current spin configuration to an HDF5 file for later
 use in simulation continuation or postprocessing workflows.
 
 # Arguments
@@ -475,8 +699,8 @@ use in simulation continuation or postprocessing workflows.
 - `out::HDF5.Group`: Output HDF5 group for writing checkpoint data
 
 # Saved Data
-- `kappa_up`: Current up-spinon configuration vector
-- `kappa_down`: Current down-spinon configuration vector
+- `kappa_up`: Current up-spin configuration vector
+- `kappa_down`: Current down-spin configuration vector
 
 # Usage Contexts
 1. **Simulation checkpointing**: Save state for restarting long simulations
@@ -494,12 +718,12 @@ use in simulation continuation or postprocessing workflows.
     return nothing
 end
 
-"""    
+"""
     Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
 
 Restore Monte Carlo state from saved checkpoint for simulation continuation.
 
-**Purpose**: Loads previously saved spinon configurations to resume a simulation 
+**Purpose**: Loads previously saved spin configurations to resume a simulation
 from a specific state or initialize postprocessing analysis.
 
 # Arguments
@@ -507,8 +731,8 @@ from a specific state or initialize postprocessing analysis.
 - `in::HDF5.Group`: Input HDF5 group containing checkpoint data
 
 # Restored Data
-- `kappa_up`: Up-spinon configuration vector
-- `kappa_down`: Down-spinon configuration vector
+- `kappa_up`: Up-spin configuration vector
+- `kappa_down`: Down-spin configuration vector
 
 # Usage Contexts
 1. **Simulation resumption**: Continue interrupted long simulations
@@ -516,11 +740,11 @@ from a specific state or initialize postprocessing analysis.
 3. **Reproducibility**: Restore exact simulation states
 
 # Side Effects
-- Modifies mc.kappa_up and mc.kappa_down in-place
+- Modifies `mc.kappa_up` and `mc.kappa_down` in-place
 - Overwrites current Monte Carlo configuration completely
 
 # Notes
-- Called automatically by Carlo.jl when resuming from checkpoints  
+- Called automatically by Carlo.jl when resuming from checkpoints
 - Essential for maintaining simulation continuity
 - Enables reproducible analysis workflows
 """
