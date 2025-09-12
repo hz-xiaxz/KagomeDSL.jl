@@ -6,14 +6,13 @@ using Carlo
 using Carlo.JobTools
 using Dates
 using LinearAlgebra
-using ArnoldiMethod
 
 tm = TaskMaker()
 tm.thermalization = 5000
-tm.sweeps = 50_000_000
-tm.binsize = 50
-tm.n1 = 8
-tm.n2 = 8
+tm.sweeps = 10_000
+tm.binsize = 2 
+tm.n1 = 4 
+tm.n2 = 4 
 ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, true)
 tm.antiPBC = (false, true)
