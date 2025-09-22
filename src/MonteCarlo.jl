@@ -617,6 +617,11 @@ function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_d
         mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
         mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
     end
+
+    # --- ADDED: Ensure kappa vectors are always canonical ---
+    relabel_configuration!(mc.kappa_up)
+    relabel_configuration!(mc.kappa_down)
+    # -------------------------------------------------------
 end
 
 """
