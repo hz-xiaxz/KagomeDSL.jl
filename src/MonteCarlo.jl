@@ -1,4 +1,4 @@
-mutable struct MCState{N_up, N_down} <: AbstractMC
+mutable struct MCState{N_up, N_down} <: Carlo.AbstractMC
     Ham::Hamiltonian{N_up, N_down}
     kappa_up::Vector{Int}
     kappa_down::Vector{Int}

@@ -24,7 +24,7 @@ We will introduce a type parameter `N` to our core `structs` to represent the pa
 
 ```julia
 # Parameterized State Structure
-abstract type AbstractMCState{N_up, N_down} end
+abstract type AbstractMCState{N_up, N_down} <: Carlo.AbstractMC end
 
 struct MCState{N_up, N_down} <: AbstractMCState{N_up, N_down}
     Ham::Hamiltonian{N_up, N_down}
@@ -105,7 +105,7 @@ We must **not** modify the assertion. Instead, we will **relabel** the `kappa` v
 ### 3.3. Relabeling Strategy
 
 1.  **Apply Operator**: After applying `S⁺ᵢ`, a down-spin site becomes an up-spin site.
-2.  **Update `kappa` vectors**:
+2.  **Update `kappa` vectors**: 
     *   The original down-spin label at site `i` is removed from `kappa_down`.
     *   A new up-spin label is added to `kappa_up` at site `i`.
 3.  **Relabel `kappa`**: Both `kappa_up` and `kappa_down` are relabeled to ensure their non-zero entries are continuous from `1` to `N_up'` and `1` to `N_down'`, respectively.
@@ -138,6 +138,31 @@ function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) -> MCState
 end
 ```
 
+### 3.4. Clarification on Orbital Assignment and `kappa` Relabeling
+
+There was a misunderstanding regarding the assignment of orbital indices, particularly when a new site becomes occupied due to a spin flip. To clarify:
+
+*   **`kappa`'s Role:** The `kappa` vector maps `site_index -> orbital_index`. That is, `kappa[site_index]` stores the `l`-th orbital (corresponding to the `l`-th column of the `U` matrix) that occupies `site_index`.
+*   **`spin_plus_transition`'s Initial Assignment:** When an `S+` operator acts on site `i`, `spin_plus_transition` initially assigns `N_up + 1` as the orbital index to `kappa_up[i]`. This `N_up + 1` is chosen because it represents the next available orbital number in the new `N_up+1` sector.
+*   **`relabel_configuration!`'s Crucial Role:** The `relabel_configuration!` function then ensures that the *values* within the `kappa` vector (the orbital indices) remain a contiguous sequence from `1` to `N_new` (where `N_new` is the new total number of occupied sites for that spin species). It achieves this by:
+    1.  Identifying all sites that are currently occupied (have non-zero entries in `kappa`).
+    2.  Sorting these occupied sites based on their `site_index`.
+    3.  Assigning new orbital indices `1, 2, 3, ...` sequentially to these sorted occupied sites. For example, the site that is first in the sorted list of occupied sites gets orbital index 1, the second gets 2, and so on.
+
+This two-step process (initial assignment by `spin_plus_transition` followed by `relabel_configuration!`) is vital because it guarantees that:
+
+1.  The correct number of orbitals (`N_up+1` or `N_down-1`) are accounted for.
+2.  The orbital indices within the `kappa` vector are always contiguous and 1-based. This is a strict requirement for the `tilde_U` matrix construction, where `tilde_U[l, :]` accesses the `l`-th row, implying `l` must be in the range `1...m` (where `m` is the number of occupied orbitals).
+3.  The physical content (which sites are occupied) is preserved, and the orbital indices serve purely as a consistent bookkeeping mechanism for the Slater determinant calculation.
+
+**Correction on `relabel_configuration!`'s Necessity:**
+
+My previous explanation stated that `relabel_configuration!` is essential for `tilde_U` matrix construction because `tilde_U` cannot handle non-contiguous orbital indices. This was imprecise. The `tilde_U` function *can* technically handle non-contiguous orbital indices (e.g., `[1, 3, 2]`) as long as those indices are within the valid range of `1` to `m` (the number of occupied orbitals). The `tilde_U[l, :] = U[Rl, :]` line correctly maps the site's row from `U` to the `l`-th row of `tilde_U`.
+
+The *true* and critical reason `relabel_configuration!` is essential is to ensure that the **values** within the `kappa` vector (which represent the orbital indices) are *always* a contiguous sequence from `1` to `N_occupied` (the total number of occupied sites for that spin species). This is vital because:
+
+1.  **`tilde_U` Dimension:** The `tilde_U` matrix is constructed as an `m x m` matrix, where `m` is precisely the number of occupied orbitals. If the orbital indices in `kappa` are not `1, 2, ..., m`, then attempting to assign `tilde_U[l, :]` where `l` is outside this `1...m` range would lead to `BoundsError`s or incorrect matrix construction (e.g., trying to assign to `tilde_U[5, :]` when `m=3`).
+2.  **Canonical Representation:** `relabel_configuration!` enforces a canonical, dense numbering of orbitals. This simplifies subsequent calculations that rely on iterating through or indexing by orbital number, and ensures consistency across different configurations.
 ## 4. Implementation Phasing
 
 ### Phase 1: Type Parameterization
