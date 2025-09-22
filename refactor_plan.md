@@ -49,7 +49,7 @@ struct Hamiltonian{N}
     nn::AbstractArray
     # Additional orbitals for different N sectors
     U_up_plus::Matrix{ComplexF64}  # For N+1 sector
-    U_down_plus::Matrix{ComplexF64}
+    U_down_minus::Matrix{ComplexF64}
 end
 ```
 
@@ -73,6 +73,17 @@ end
         # Type parameters ensure compatibility
     end
     ```
+
+### 2.3. Clarification on N_up, N_down Dispatch
+
+The original plan proposed a single `N` parameter for `MCState{N}` and `Hamiltonian{N}`. However, the implementation uses `MCState{N_up, N_down}` and `Hamiltonian{N_up, N_down}`. This refinement is intentional and offers significant advantages:
+
+1.  **Physical Specificity:** In spinon mean-field theory, `N_up` and `N_down` are distinct physical quantities determining system magnetization. Operations like `S+` change them independently. Dispatching on both preserves this crucial information at the type level.
+2.  **Enhanced Type Safety and Consistency:** When `spin_plus_transition` is called on `MCState{N_up, N_down}`, the compiler precisely knows the new `N_up_new = N_up + 1` and `N_down_new = N_down - 1` values. This enables compile-time guarantees for creating the new `MCState{N_up_new, N_down_new}` and ensures `kappa` vectors and `W` matrices have correct spin-resolved dimensions.
+3.  **Superior Performance Specialization:** Julia's multiple dispatch excels with concrete types. By having `N_up` and `N_down` as type parameters, the compiler generates highly optimized code for each specific combination of spinon numbers. Matrix operations involving `U_up` (size `ns x N_up`) and `U_down` (size `ns x N_down`) can be specialized for their exact dimensions, leading to better performance than generic code for runtime values.
+4.  **Improved Clarity and Readability:** The type signature `MCState{N_up, N_down}` immediately conveys the spinon composition of the state, which is more informative than a generic `MCState{N_total}`.
+
+While this approach might lead to method proliferation for a very large number of distinct `(N_up, N_down)` pairs, in typical VMC simulations, these values are fixed or change only discretely. The benefits in correctness, performance, and clarity outweigh these manageable downsides.
 
 ---
 
