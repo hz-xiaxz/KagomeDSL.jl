@@ -711,6 +711,18 @@ correlation between samples and improve measurement efficiency.
     if ctx.sweeps % n_occupied == 0
         OL = getOL(mc, mc.kappa_up, mc.kappa_down)
         measure!(ctx, :OL, OL)
+
+        # New measurement
+        ns = length(mc.kappa_up)
+        s_plus_amp = 0.0 + 0.0im
+        s_plus_amp_sq = 0.0
+        for i in 1:ns
+            amp, amp_sq = measure_S_plus(mc, i)
+            s_plus_amp += amp
+            s_plus_amp_sq += amp_sq
+        end
+        measure!(ctx, :S_plus_amp, s_plus_amp / ns)
+        measure!(ctx, :S_plus_amp_sq, s_plus_amp_sq / ns)
     end
 end
 
@@ -763,6 +775,12 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
     ns = n1 * n2 * 3
     evaluate!(eval, :energy, (:OL,)) do OL
         return OL / ns
+    end
+    evaluate!(eval, :S_plus_amp, (:S_plus_amp,)) do S_plus_amp
+        return S_plus_amp
+    end
+    evaluate!(eval, :S_plus_amp_sq, (:S_plus_amp_sq,)) do S_plus_amp_sq
+        return S_plus_amp_sq
     end
     return nothing
 end
