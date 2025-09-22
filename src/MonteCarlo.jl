@@ -160,6 +160,10 @@ function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) where {N_u
     return new_mc
 end
 
+function apply_operator(op::SpinPlusOperator{N_up, N_down}, state::MCState{N_up, N_down}) where {N_up, N_down}
+    return spin_plus_transition(state, op.site)
+end
+
 
 """
     is_occupied(kappa::Vector{Int}, l::Int) -> Bool

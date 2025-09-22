@@ -450,6 +450,12 @@ function get_nn(H_mat::AbstractMatrix)
     return [(i[1], i[2]) for i in indices]
 end
 
+abstract type AbstractOperator end
+
+struct SpinPlusOperator{N_up, N_down} <: AbstractOperator
+    site::Int
+end
+
 
 """    
     Hamiltonian(N_up, N_down, lat; link_in=pi_link_in, link_inter=pi_link_inter, B=0.0)
