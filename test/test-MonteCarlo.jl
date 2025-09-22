@@ -1,4 +1,4 @@
-using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U
+using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!
 using Random
 using Test
 using LinearAlgebra
@@ -11,34 +11,57 @@ using HDF5
     # kappa_up and kappa_down are initialized in Carlo.init!, so we don't check their lengths here.
 end
 
+@testset "relabel_configuration!" begin
+    kappa = [0, 5, 0, 2, 3]
+    relabel_configuration!(kappa)
+    @test kappa == [0, 1, 0, 2, 3]
+
+    kappa = [10, 20, 30]
+    relabel_configuration!(kappa)
+    @test kappa == [1, 2, 3]
+
+    kappa = [0, 0, 0]
+    relabel_configuration!(kappa)
+    @test kappa == [0, 0, 0]
+
+    kappa = [1, 0, 0]
+    relabel_configuration!(kappa)
+    @test kappa == [1, 0, 0]
+end
+
 @testset "init_conf_qr! tests" begin
     @testset "Basic functionality and non-singularity" begin
         n1 = 2
         n2 = 2
         ns = n1 * n2 * 3 # 12 sites
         N_up = 6
-        N_down = ns - N_up # 6 sites
+        N_down = 6
 
         # Create a mock Hamiltonian for testing
         # Ensure U_up and U_down are full rank for a non-singular tilde_U to be possible
         U_up_mock = rand(ns, N_up)
         U_down_mock = rand(ns, N_down)
-        mock_ham = Hamiltonian{N_up,N_down}(U_up_mock, U_down_mock, zeros(ns, ns), [])
+        mock_ham = Hamiltonian{N_up,N_down}(
+            U_up_mock,
+            U_down_mock,
+            zeros(ns, ns),
+            [],
+            zeros(ns, N_up + 1),
+            zeros(ns, N_down - 1),
+        )
 
         mc =
             MC(mock_ham, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
 
         # Call the QR-based initialization
-        KagomeDSL.init_conf_qr!(mc, ns, N_up)
+        KagomeDSL.init_conf_qr!(mc, ns, N_up, N_down)
 
         # Verify kappa_up and kappa_down properties
         @test count(!iszero, mc.kappa_up) == N_up
         @test count(!iszero, mc.kappa_down) == N_down
         @test all(x -> x in 1:N_up, filter(!iszero, mc.kappa_up))
         @test all(x -> x in 1:N_down, filter(!iszero, mc.kappa_down))
-        for i = 1:ns
-            @test xor(mc.kappa_up[i] != 0, mc.kappa_down[i] != 0)
-        end
+        @test count(iszero, mc.kappa_up) + count(iszero, mc.kappa_down) == ns * 2 - N_up - N_down
 
         # Verify non-singularity of tilde_U matrices
         tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
@@ -187,7 +210,14 @@ end
         # Create a simple 2x2 test case
         U_up = [1.0 0.2; 0.2 1.0]
         U_down = [1.0 0.3; 0.3 1.0]
-        ham = Hamiltonian{2,2}(U_up, U_down, zeros(4, 4), [])
+        ham = Hamiltonian{2,2}(
+            U_up,
+            U_down,
+            zeros(4, 4),
+            [],
+            zeros(4, 3),
+            zeros(4, 1),
+        )
         kappa_up = [1, 2]
         kappa_down = [2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(2, 2), zeros(2, 2))
@@ -213,7 +243,14 @@ end
         U_up = (U_up + U_up') / 2  # Make symmetric
         U_down = (U_down + U_down') / 2
 
-        ham = Hamiltonian{4,4}(U_up, U_down, zeros(16, 16), [])
+        ham = Hamiltonian{4,4}(
+            U_up,
+            U_down,
+            zeros(16, 16),
+            [],
+            zeros(16, 5),
+            zeros(16, 3),
+        )
         kappa_up = [1, 2, 3, 4]
         kappa_down = [4, 3, 2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(n, n), zeros(n, n))
@@ -285,7 +322,14 @@ end
 
         # Create mock MC struct with necessary fields
         mc = MC(
-            Hamiltonian{3,3}(zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
+            Hamiltonian{3,3}(
+                zeros(n, n),
+                zeros(n, n),
+                zeros(n^2, n^2),
+                [],
+                zeros(n, 4),
+                zeros(n, 2),
+            ),
             zeros(Int, n),
             zeros(Int, n),
             copy(W_up),
@@ -412,7 +456,7 @@ end
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     @test abs(det(tilde_U_up)) != 0.0
 
-    N_down = (param[:n1] * param[:n2] * 3) - param[:N_up]
+    N_down = param[:N_down]
     if N_down > 0
         tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
         @test abs(det(tilde_U_down)) != 0.0
@@ -424,7 +468,7 @@ end
     n2 = 2
     ns = n1 * n2 * 3 # 12 sites
     N_up = 6
-    N_down = ns - N_up # 6 sites
+    N_down = 6
 
     # Create a mock U_up matrix that will lead to a singular tilde_U_up
     # Make all rows identical to guarantee singularity of tilde_U_up
@@ -437,6 +481,8 @@ end
         rand(ns, N_down),
         zeros(ComplexF64, ns, ns),
         Tuple{Int,Int}[],
+        zeros(ComplexF64, ns, N_up + 1),
+        zeros(ComplexF64, ns, N_down - 1),
     )
 
     mc_singular = MC(

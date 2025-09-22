@@ -92,6 +92,8 @@ end
     num = ns(DK2)
     @test size(U_up) == (num, N_up)
     @test size(U_down) == (num, N_down)
+    @test size(Han.U_up_plus) == (num, N_up + 1)
+    @test size(Han.U_down_minus) == (num, N_down - 1)
 end
 
 @testset "getxprime" begin

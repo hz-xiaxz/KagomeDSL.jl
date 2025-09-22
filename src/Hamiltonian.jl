@@ -422,6 +422,8 @@ struct Hamiltonian{N_up, N_down}
     U_down::Matrix{ComplexF64}
     H_mat::Matrix{ComplexF64}
     nn::AbstractArray
+    U_up_plus::Matrix{ComplexF64}
+    U_down_minus::Matrix{ComplexF64}
 end
 
 """    
@@ -495,8 +497,16 @@ function Hamiltonian(
 ) where {N_up, N_down, T<:AbstractLattice}
     H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
+    
+    ns = size(H_mat, 1)
+    U_up_plus = zeros(ComplexF64, ns, 0)
+    U_down_minus = zeros(ComplexF64, ns, 0)
+    if N_down > 0
+        U_up_plus, U_down_minus = orbitals(H_mat, N_up + 1, N_down - 1)
+    end
+
     nn = get_nn(H_mat)
-    return Hamiltonian{N_up, N_down}(U_up, U_down, H_mat, nn)
+    return Hamiltonian{N_up, N_down}(U_up, U_down, H_mat, nn, U_up_plus, U_down_minus)
 end
 
 
