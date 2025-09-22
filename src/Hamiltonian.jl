@@ -486,7 +486,7 @@ This is the main constructor that builds everything needed for SSE Monte Carlo:
 function Hamiltonian(
     N_up::Int,
     N_down::Int,
-    lat;
+    lat::AbstractLattice;
     link_in = pi_link_in,
     link_inter = pi_link_inter,
     B = 0.0,
@@ -496,7 +496,7 @@ end
 
 function Hamiltonian(
     ::Val{N_up}, ::Val{N_down},
-    lat;
+    lat::AbstractLattice;
     link_in = pi_link_in,
     link_inter = pi_link_inter,
     B = 0.0,
