@@ -1,4 +1,4 @@
-using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!
+using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!, spin_plus_transition
 using Random
 using Test
 using LinearAlgebra
@@ -27,6 +27,40 @@ end
     kappa = [1, 0, 0]
     relabel_configuration!(kappa)
     @test kappa == [1, 0, 0]
+end
+
+@testset "spin_plus_transition" begin
+    # Setup initial MC state
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+    
+    # Initialize configuration
+    mc.kappa_up = [1, 2, 3, 0, 0, 0]
+    mc.kappa_down = [0, 0, 0, 1, 2, 3]
+
+    # Site to flip
+    site_to_flip = 4 # Has a down spin
+
+    # Perform transition
+    new_mc = spin_plus_transition(mc, site_to_flip)
+
+    # Check new particle numbers
+    @test size(new_mc.Ham.U_up, 2) == params[:N_up] + 1
+    @test size(new_mc.Ham.U_down, 2) == params[:N_down] - 1
+
+    # Check new kappa vectors
+    @test new_mc.kappa_up[site_to_flip] != 0
+    @test new_mc.kappa_down[site_to_flip] == 0
+    @test count(!iszero, new_mc.kappa_up) == params[:N_up] + 1
+    @test count(!iszero, new_mc.kappa_down) == params[:N_down] - 1
+
+    # Check that W matrices are re-evaluated and not all zero
+    @test !iszero(new_mc.W_up)
+    @test !iszero(new_mc.W_down)
 end
 
 @testset "init_conf_qr! tests" begin

@@ -100,6 +100,67 @@ function tilde_U(U::AbstractMatrix, kappa::Vector{Int})
     return tilde_U
 end
 
+function relabel_configuration!(kappa::Vector{Int})
+    occupied_sites = findall(!iszero, kappa)
+    new_kappa = zeros(Int, length(kappa))
+    for (new_label, site) in enumerate(occupied_sites)
+        new_kappa[site] = new_label
+    end
+    copyto!(kappa, new_kappa)
+    return nothing
+end
+
+function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) where {N_up, N_down}
+    # 1. Check for a down spin at the site
+    if !is_occupied(mc_n.kappa_down, site)
+        throw(ArgumentError("No down spin to flip at site $site"))
+    end
+
+    # 2. Create new kappa vectors
+    new_kappa_up = copy(mc_n.kappa_up)
+    new_kappa_down = copy(mc_n.kappa_down)
+
+    # 3. Apply spin flip
+    # Find a free label for the new up spin. It will be N_up + 1 after relabeling.
+    # For now, just mark it as occupied.
+    new_kappa_up[site] = 1 # Placeholder, will be relabeled
+    new_kappa_down[site] = 0
+
+    # 4. Relabel
+    relabel_configuration!(new_kappa_up)
+    relabel_configuration!(new_kappa_down)
+
+    # 5. Create new Hamiltonian and MCState
+    new_N_up = N_up + 1
+    new_N_down = N_down - 1
+
+    new_ham = Hamiltonian{new_N_up, new_N_down}(
+        mc_n.Ham.U_up_plus, 
+        mc_n.Ham.U_down_minus, 
+        mc_n.Ham.H_mat, 
+        mc_n.Ham.nn,
+        # The new U_up_plus and U_down_minus are not available.
+        # For now, I will just put empty matrices.
+        zeros(ComplexF64, size(mc_n.Ham.H_mat,1), 0),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat,1), 0)
+    )
+
+    # Create the new MCState. W matrices are zero-initialized.
+    new_mc = MCState(
+        new_ham,
+        new_kappa_up,
+        new_kappa_down,
+        zeros(eltype(new_ham.U_up), size(new_ham.U_up, 1), new_N_up),
+        zeros(eltype(new_ham.U_down), size(new_ham.U_down, 1), new_N_down)
+    )
+
+    # The W matrices need to be calculated.
+    reevaluateW!(new_mc)
+
+    return new_mc
+end
+
+
 """
     is_occupied(kappa::Vector{Int}, l::Int) -> Bool
 
@@ -311,7 +372,7 @@ ensure non-singular tilde_U matrices and avoid random trial-and-error initializa
 # Note
 This deterministic approach produces non-singular tilde_U matrices for stable Green's function initialization.
 """
-function init_conf_qr!(mc::MCState, ns::Int, N_up::Int)
+function init_conf_qr!(mc::MCState, ns::Int, N_up::Int, N_down::Int)
     # Use QR decomposition with pivoting to select linearly independent rows from U
     # This should give a non-singular tilde_U matrix if possible.
 
@@ -324,7 +385,6 @@ function init_conf_qr!(mc::MCState, ns::Int, N_up::Int)
     end
 
     # For kappa_down
-    N_down = ns - N_up
     if N_down > 0
         available_sites = setdiff(1:ns, sites_up)
         U_down_subset = mc.Ham.U_down[collect(available_sites), :]
@@ -367,11 +427,10 @@ configurations and compute the initial Green's function matrices.
 - `ErrorException`: If QR-based configuration produces singular matrices,
   indicating potential rank deficiency in the Hamiltonian
 """
-function find_initial_configuration!(mc::MCState, ns::Int, N_up::Int)
-    init_conf_qr!(mc, ns, N_up)
+function find_initial_configuration!(mc::MCState, ns::Int, N_up::Int, N_down::Int)
+    init_conf_qr!(mc, ns, N_up, N_down)
 
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
-    N_down = ns - N_up
     if N_down > 0
         tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
     end
@@ -425,7 +484,8 @@ during simulation initialization to prepare the Monte Carlo state.
     n2 = params[:n2]
     ns = n1 * n2 * 3
     N_up = params[:N_up]
-    find_initial_configuration!(mc, ns, N_up)
+    N_down = params[:N_down]
+    find_initial_configuration!(mc, ns, N_up, N_down)
 end
 
 """
