@@ -24,10 +24,10 @@ We will introduce a type parameter `N` to our core `structs` to represent the pa
 
 ```julia
 # Parameterized State Structure
-abstract type AbstractMCState{N} end
+abstract type AbstractMCState{N_up, N_down} end
 
-struct MCState{N} <: AbstractMCState{N}
-    Ham::Hamiltonian{N}
+struct MCState{N_up, N_down} <: AbstractMCState{N_up, N_down}
+    Ham::Hamiltonian{N_up, N_down}
     kappa_up::Vector{Int}
     kappa_down::Vector{Int}
     W_up::AbstractMatrix
@@ -40,7 +40,7 @@ struct MCState{N} <: AbstractMCState{N}
 end
 
 # Parameterized Hamiltonian
-struct Hamiltonian{N}
+struct Hamiltonian{N_up, N_down}
     N_up::Int
     N_down::Int
     U_up::Matrix{ComplexF64}
@@ -57,23 +57,22 @@ end
 
 *   **Type Safety**: The compiler can validate particle number consistency.
     ```julia
-    function measure_operator(mc::MCState{N}, op::Operator) where {N}
-        # N is known at compile time
+    function measure_operator(mc::MCState{N_up, N_down}, op::Operator) where {N_up, N_down}
+        # N_up and N_down are known at compile time
     end
     ```
-*   **Performance Optimization**: The compiler can generate specialized methods for each particle number.
-    ```julia
-    @inline function update_W!(mc::MCState{N}, args...) where {N}
-        # Compiler can optimize for specific N
-    end
+    *   **Performance Optimization**: The compiler can generate specialized methods for each particle number.
+        ```julia
+        @inline function update_W!(mc::MCState{N_up, N_down}, args...) where {N_up, N_down}
+            # Compiler can optimize for specific N_up and N_down
+        end
+        ```
+    *   **Clean Interface**: The types clearly separate different sectors.
+        ```julia
+        function transition_amplitude(mc_n::MCState{N_up, N_down}, mc_np1::MCState{N_up_new, N_down_new}) where {N_up, N_down, N_up_new, N_down_new}
+            # Type parameters ensure compatibility
+        end
     ```
-*   **Clean Interface**: The types clearly separate different sectors.
-    ```julia
-    function transition_amplitude(mc_n::MCState{N}, mc_np1::MCState{N+1})
-        # Type parameters ensure compatibility
-    end
-    ```
-
 ### 2.3. Clarification on N_up, N_down Dispatch
 
 The original plan proposed a single `N` parameter for `MCState{N}` and `Hamiltonian{N}`. However, the implementation uses `MCState{N_up, N_down}` and `Hamiltonian{N_up, N_down}`. This refinement is intentional and offers significant advantages:
