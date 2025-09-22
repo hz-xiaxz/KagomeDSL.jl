@@ -149,10 +149,9 @@ function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) where {N_u
     new_kappa_up = copy(mc_n.kappa_up)
     new_kappa_down = copy(mc_n.kappa_down)
 
-    # 3. Apply spin flip
-    # Find a free label for the new up spin. It will be N_up + 1 after relabeling.
-    # For now, just mark it as occupied.
-    new_kappa_up[site] = 1 # Placeholder, will be relabeled
+    # 3. Apply spin flip: site 'site' loses a down spin and gains an up spin
+    # The new up spin gets the (N_up + 1)-th orbital
+    new_kappa_up[site] = N_up + 1 # Assign the new orbital index
     new_kappa_down[site] = 0
 
     # 4. Relabel
