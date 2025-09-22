@@ -1,4 +1,4 @@
-using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!, spin_plus_transition, apply_operator, MC
+using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!, spin_plus_transition, apply_operator, MC, measure_S_plus
 using Random
 using Test
 using LinearAlgebra
@@ -88,6 +88,30 @@ end
     # Check new particle numbers
     @test size(new_mc.Ham.U_up, 2) == params[:N_up] + 1
     @test size(new_mc.Ham.U_down, 2) == params[:N_down] - 1
+end
+
+@testset "measure_S_plus" begin
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+    
+    mc.kappa_up = [1, 2, 3, 0, 0, 0]
+    mc.kappa_down = [0, 0, 0, 1, 2, 3]
+
+    site_to_flip = 4 # Has a down spin
+    amp, amp_sq = measure_S_plus(mc, site_to_flip)
+    @test amp isa Complex
+    @test amp_sq isa Real
+    @test amp_sq ≈ abs2(amp)
+
+    # Test invalid site
+    site_to_flip = 1 # Has an up spin
+    amp, amp_sq = measure_S_plus(mc, site_to_flip)
+    @test amp == 0.0
+    @test amp_sq == 0.0
 end
 
 @testset "init_conf_qr! tests" begin

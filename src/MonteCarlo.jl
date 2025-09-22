@@ -164,6 +164,35 @@ function apply_operator(op::SpinPlusOperator{N_up, N_down}, state::MCState{N_up,
     return spin_plus_transition(state, op.site)
 end
 
+function get_log_det_ratio(mc_n::MCState{N_up, N_down}, mc_np1::MCState{N_up_p1, N_down_m1}) where {N_up, N_down, N_up_p1, N_down_m1}
+    # This is inefficient as it re-calculates tilde_U matrices
+    
+    # logdet for state n
+    tilde_U_up_n = tilde_U(mc_n.Ham.U_up, mc_n.kappa_up)
+    tilde_U_down_n = tilde_U(mc_n.Ham.U_down, mc_n.kappa_down)
+    log_det_n = logdet(tilde_U_up_n) + logdet(tilde_U_down_n)
+
+    # logdet for state n+1
+    tilde_U_up_np1 = tilde_U(mc_np1.Ham.U_up, mc_np1.kappa_up)
+    tilde_U_down_np1 = tilde_U(mc_np1.Ham.U_down, mc_np1.kappa_down)
+    log_det_np1 = logdet(tilde_U_up_np1) + logdet(tilde_U_down_np1)
+
+    return log_det_np1 - log_det_n
+end
+
+function measure_S_plus(mc::MCState, site::Int)
+    if !is_occupied(mc.kappa_down, site)
+        return 0.0, 0.0 # return amplitude and amplitude squared
+    end
+
+    mc_np1 = spin_plus_transition(mc, site)
+
+    log_ratio = get_log_det_ratio(mc, mc_np1)
+    
+    ratio = exp(log_ratio)
+    return ratio, abs2(ratio)
+end
+
 
 """
     is_occupied(kappa::Vector{Int}, l::Int) -> Bool
