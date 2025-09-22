@@ -23,7 +23,7 @@ end
         # Ensure U_up and U_down are full rank for a non-singular tilde_U to be possible
         U_up_mock = rand(ns, N_up)
         U_down_mock = rand(ns, N_down)
-        mock_ham = Hamiltonian(N_up, N_down, U_up_mock, U_down_mock, zeros(ns, ns), [])
+        mock_ham = Hamiltonian{N_up,N_down}(U_up_mock, U_down_mock, zeros(ns, ns), [])
 
         mc =
             MC(mock_ham, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
@@ -176,8 +176,8 @@ end
     # Test Néel state configuration
     # Sites: 0-1-2 in a line, each connected to neighbors
     nn = [(1, 2), (2, 3), (1, 3)]  # nearest neighbor bonds
-    kappa_up = [0, 1, 0]   # up spins at sites 0,!!2
-    kappa_down = [1, 0, 2] # down spins at sites 1
+    kappa_up = [0, 1, 0]   # up spins at sites 1
+    kappa_down = [1, 0, 2] # down spins at sites 1 and 3 
 
     @test KagomeDSL.Z(nn, kappa_up, kappa_down) == 2
 end
@@ -187,7 +187,7 @@ end
         # Create a simple 2x2 test case
         U_up = [1.0 0.2; 0.2 1.0]
         U_down = [1.0 0.3; 0.3 1.0]
-        ham = Hamiltonian(1, 1, U_up, U_down, zeros(4, 4), [])
+        ham = Hamiltonian{2,2}(U_up, U_down, zeros(4, 4), [])
         kappa_up = [1, 2]
         kappa_down = [2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(2, 2), zeros(2, 2))
@@ -213,7 +213,7 @@ end
         U_up = (U_up + U_up') / 2  # Make symmetric
         U_down = (U_down + U_down') / 2
 
-        ham = Hamiltonian(2, 2, U_up, U_down, zeros(16, 16), [])
+        ham = Hamiltonian{4,4}(U_up, U_down, zeros(16, 16), [])
         kappa_up = [1, 2, 3, 4]
         kappa_down = [4, 3, 2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(n, n), zeros(n, n))
@@ -285,7 +285,7 @@ end
 
         # Create mock MC struct with necessary fields
         mc = MC(
-            Hamiltonian(n, n, zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
+            Hamiltonian{3,3}(zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
             zeros(Int, n),
             zeros(Int, n),
             copy(W_up),
@@ -361,14 +361,7 @@ end
     W_up .= 1.0 + 0.0im
     W_down .= 1.0 + 0.0im
     mc = MC(
-        Hamiltonian(
-            N_up,
-            N_down,
-            zeros(ComplexF64, n, N_up),
-            zeros(ComplexF64, n, N_down),
-            zeros(ComplexF64, n, n),
-            Tuple{Int,Int}[],
-        ),
+        Hamiltonian(N_up, N_down, DoubleKagome(1.0, n, n, (false, false))),
         [1, 0, 2, 0],
         [0, 1, 0, 2],
         copy(W_up),
@@ -439,9 +432,7 @@ end
     U_up_singular = repeat(U_up_singular, ns, 1) # Repeat it for all ns rows
 
     # Create a mock Hamiltonian with the singular U_up
-    mock_ham_singular = Hamiltonian(
-        N_up,
-        N_down,
+    mock_ham_singular = Hamiltonian{N_up,N_down}(
         U_up_singular,
         rand(ns, N_down),
         zeros(ComplexF64, ns, ns),

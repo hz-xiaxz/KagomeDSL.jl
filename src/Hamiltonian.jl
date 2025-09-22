@@ -417,9 +417,7 @@ Monte Carlo calculations of quantum spin liquid properties:
 - Represents a quantum spin liquid state where spins are fractionalized
 - Correlations arise from quantum fluctuations around the mean-field state
 """
-struct Hamiltonian
-    N_up::Int
-    N_down::Int
+struct Hamiltonian{N_up, N_down}
     U_up::Matrix{ComplexF64}
     U_down::Matrix{ComplexF64}
     H_mat::Matrix{ComplexF64}
@@ -485,10 +483,20 @@ function Hamiltonian(
     link_inter = pi_link_inter,
     B = 0.0,
 ) where {T<:AbstractLattice}
+    return Hamiltonian(Val(N_up), Val(N_down), lat; link_in=link_in, link_inter=link_inter, B=B)
+end
+
+function Hamiltonian(
+    ::Val{N_up}, ::Val{N_down},
+    lat::T;
+    link_in = pi_link_in,
+    link_inter = pi_link_inter,
+    B = 0.0,
+) where {N_up, N_down, T<:AbstractLattice}
     H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
     nn = get_nn(H_mat)
-    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
+    return Hamiltonian{N_up, N_down}(U_up, U_down, H_mat, nn)
 end
 
 
@@ -719,60 +727,3 @@ The result is H|κ⟩ = Σ_κ' xprime[κ'] |κ'⟩, where xprime encodes the exp
     return xprime
 end
 
-@doc raw"""    
-    getOL(mc::AbstractMC, kappa_up, kappa_down) -> Float64
-
-Compute the local energy estimator for quantum Monte Carlo.
-
-Calculates the observable O_L = ⟨x|H|ψ_G⟩/⟨x|ψ_G⟩, which provides an unbiased
-estimator of the ground state energy in the Stochastic Series Expansion method.
-
-In the spinon mean-field framework:
-- |ψ_G⟩ is the Slater Determinant spinon state (Gutzwiller projected)
-- |x⟩ = |κ_up⟩ ⊗ |κ_down⟩ is a particular spinon configuration
-- H is the original Heisenberg Hamiltonian (not the mean-field one!)
-
-The ratio gives the local contribution to the energy from configuration |x⟩.
-
-# Arguments
-- `mc::AbstractMC`: Monte Carlo state containing W_up, W_down matrices
-- `kappa_up::Vector{Int}`: Current up-spinon configuration
-- `kappa_down::Vector{Int}`: Current down-spinon configuration
-
-# Returns
-- `Float64`: Local energy contribution from this configuration
-
-# Algorithm
-1. Compute H|x⟩ using getxprime() to get all reachable configurations
-2. For diagonal terms: directly add the Ising contributions
-3. For off-diagonal terms: weight by the wavefunction amplitude ratios W_up, W_down
-4. Sum all contributions to get the local energy
-
-# Physics Notes
-- This is the "local energy" in variational Monte Carlo terminology
-- Fluctuations in O_L reflect the quality of the trial wavefunction
-- Used to measure energy and other observables in quantum spin liquids
-- The Hamiltonian H must be the original physical one, not the mean-field approximation
-
-# Performance Notes
-- Critical function called in every Monte Carlo step
-- Bounds checking disabled with @inbounds for performance
-- Uses efficient iteration over pairs() for dictionary access
-"""
-@inline function getOL(mc::AbstractMC, kappa_up::Vector{Int}, kappa_down::Vector{Int})
-    @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
-    # if double occupied state, no possibility to have a non-zero overlap
-
-    OL = 0.0
-    xprime = getxprime(mc.Ham, kappa_up, kappa_down)
-    @inbounds for (conf, coff) in pairs(xprime)
-        if conf == (-1, -1, -1, -1)
-            OL += coff
-        else
-            update_up = mc.W_up[conf[1], conf[2]]
-            update_down = mc.W_down[conf[3], conf[4]]
-            OL += coff * update_up * update_down
-        end
-    end
-    return OL
-end

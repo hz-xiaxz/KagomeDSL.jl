@@ -1,21 +1,5 @@
-"""
-    MC <: AbstractMC
-
-Monte Carlo simulation state for quantum spin systems on the Kagome lattice.
-
-# Fields
-- `Ham::Hamiltonian`: The Hamiltonian describing the physical system
-- `kappa_up::Vector{Int}`: Configuration vector for up-spin electrons
-- `kappa_down::Vector{Int}`: Configuration vector for down-spin electrons  
-- `W_up::AbstractMatrix`: One-particle Green's function matrix for up-spin electrons
-- `W_down::AbstractMatrix`: One-particle Green's function matrix for down-spin electrons
-- `W_up_col_cache::AbstractVector`: Cache vector for column operations on W_up
-- `W_up_row_cache::AbstractVector`: Cache vector for row operations on W_up
-- `W_down_col_cache::AbstractVector`: Cache vector for column operations on W_down
-- `W_down_row_cache::AbstractVector`: Cache vector for row operations on W_down
-"""
-mutable struct MC <: AbstractMC
-    Ham::Hamiltonian
+mutable struct MCState{N_up, N_down} <: AbstractMC
+    Ham::Hamiltonian{N_up, N_down}
     kappa_up::Vector{Int}
     kappa_down::Vector{Int}
     W_up::AbstractMatrix
@@ -27,8 +11,10 @@ mutable struct MC <: AbstractMC
     W_down_row_cache::AbstractVector
 end
 
+const MC = MCState
+
 """
-    reevaluateW!(mc::MC)
+    reevaluateW!(mc::MCState)
 
 Recalculate the one-particle Green's function matrices W_up and W_down.
 
@@ -36,7 +22,7 @@ This function reconstructs the Green's functions from the current spin configura
 by solving the linear systems involving the tilde_U matrices.
 
 # Arguments
-- `mc::MC`: Monte Carlo state object
+- `mc::MCState`: Monte Carlo state object
 
 # Algorithm
 1. Construct tilde_U matrices from current kappa configurations
@@ -52,7 +38,7 @@ The Green's function matrices W represent the one-particle propagators
 Periodic re-evaluation is necessary to override numerical instability that
 accumulates from repeated rank-1 updates to the Green's function matrices.
 """
-function reevaluateW!(mc::MC)
+function reevaluateW!(mc::MCState)
     # Calculate inverse matrices
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
@@ -135,7 +121,7 @@ Check if site `l` is occupied in the configuration vector.
 end
 
 """
-    MC(params::AbstractDict)
+    MCState(params::AbstractDict)
 
 Create a Monte Carlo object from a dictionary of parameters.
 
@@ -147,7 +133,7 @@ simulation state with appropriate dimensions and default configurations.
 
 # Required Parameters
 - `:n1::Int`: Number of unit cells in x-direction
-- `:n2::Int`: Number of unit cells in y-direction  
+- `:n2::Int`: Number of unit cells in y-direction
 - `:PBC::Tuple{Bool,2}`: Periodic boundary conditions
 - `:N_up::Int`: Number of up-spin electrons
 - `:N_down::Int`: Number of down-spin electrons
@@ -160,9 +146,9 @@ simulation state with appropriate dimensions and default configurations.
 - `:link_inter::Function`: Inter-cell linking function (default: pi_link_inter)
 
 # Returns
-- `MC`: Initialized Monte Carlo state object
+- `MCState`: Initialized Monte Carlo state object
 """
-function MC(params::AbstractDict)
+function MCState(params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
     PBC = params[:PBC]
@@ -181,11 +167,11 @@ function MC(params::AbstractDict)
     W_up = zeros(eltype(Ham.U_up), ns, N_up)
     W_down = zeros(eltype(Ham.U_down), ns, N_down)
 
-    return MC(Ham, kappa_up, kappa_down, W_up, W_down)
+    return MCState(Ham, kappa_up, kappa_down, W_up, W_down)
 end
 
 """
-    MC(Ham, kappa_up, kappa_down, W_up, W_down)
+    MCState(Ham, kappa_up, kappa_down, W_up, W_down)
 
 Create a Monte Carlo object from its core components.
 
@@ -200,27 +186,29 @@ matrix updates. It's primarily used for internal logic and testing purposes.
 - `W_down::AbstractMatrix`: Initial one-particle Green's function for down-spin
 
 # Returns
-- `MC`: Monte Carlo state object with initialized cache arrays
+- `MCState`: Monte Carlo state object with initialized cache arrays
 
 # Note
 The cache arrays enable zero-allocation updates of the Green's function matrices
 using rank-1 update operations.
 """
-function MC(
-    Ham::Hamiltonian,
+function MCState(
+    Ham::Hamiltonian{N_up, N_down},
     kappa_up::Vector{Int},
     kappa_down::Vector{Int},
     W_up::AbstractMatrix,
     W_down::AbstractMatrix,
-)
-    ns, N_up = size(W_up)
-    _, N_down = size(W_down)
+) where {N_up, N_down}
+    ns, N_up_W = size(W_up)
+    _, N_down_W = size(W_down)
     @assert ns != 0
-    @assert N_up != 0
-    @assert N_down != 0
+    @assert N_up_W != 0
+    @assert N_down_W != 0
+    @assert N_up_W == N_up
+    @assert N_down_W == N_down
 
 
-    return MC(
+    return MCState{N_up, N_down}(
         Ham,
         kappa_up,
         kappa_down,
@@ -234,7 +222,7 @@ function MC(
 end
 
 """
-    update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
+    update_W_matrices!(mc::MCState; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
 
 Update the one-particle Green's function matrices using rank-1 updates.
 
@@ -242,9 +230,9 @@ This function performs simultaneous updates of both W_up and W_down matrices
 using the Sherman-Morrison formula for efficient matrix inversion updates.
 
 # Arguments
-- `mc::MC`: Monte Carlo state object
+- `mc::MCState`: Monte Carlo state object
 - `K_up::Int`: Row index for up-spin matrix update
-- `K_down::Int`: Row index for down-spin matrix update  
+- `K_down::Int`: Row index for down-spin matrix update
 - `l_up::Int`: Column index for up-spin matrix update
 - `l_down::Int`: Column index for down-spin matrix update
 
@@ -252,7 +240,7 @@ using the Sherman-Morrison formula for efficient matrix inversion updates.
 Performs rank-1 updates: `W' = W - (W[:,l] * (W[K,:] - δ_{l,:})') / W[K,l]`
 for both spin components using pre-allocated cache arrays.
 """
-function update_W_matrices!(mc::MC; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
+function update_W_matrices!(mc::MCState; K_up::Int, K_down::Int, l_up::Int, l_down::Int)
     update_W!(mc.W_up, l_up, K_up, mc.W_up_col_cache, mc.W_up_row_cache)
     update_W!(mc.W_down, l_down, K_down, mc.W_down_col_cache, mc.W_down_row_cache)
 end
@@ -293,7 +281,7 @@ end
 
 
 """
-    init_conf_qr!(mc::MC, ns::Int, N_up::Int)
+    init_conf_qr!(mc::MCState, ns::Int, N_up::Int)
 
 Initialize particle configurations using QR decomposition with column pivoting.
 
@@ -310,7 +298,7 @@ This method selects sites that maximize linear independence from the U matrices 
 ensure non-singular tilde_U matrices and avoid random trial-and-error initialization.
 
 # Arguments
-- `mc::MC`: Monte Carlo state object (modified in-place)
+- `mc::MCState`: Monte Carlo state object (modified in-place)
 - `ns::Int`: Total number of sites in the lattice
 - `N_up::Int`: Number of up-spin electrons
 
@@ -323,7 +311,7 @@ ensure non-singular tilde_U matrices and avoid random trial-and-error initializa
 # Note
 This deterministic approach produces non-singular tilde_U matrices for stable Green's function initialization.
 """
-function init_conf_qr!(mc::MC, ns::Int, N_up::Int)
+function init_conf_qr!(mc::MCState, ns::Int, N_up::Int)
     # Use QR decomposition with pivoting to select linearly independent rows from U
     # This should give a non-singular tilde_U matrix if possible.
 
@@ -339,11 +327,11 @@ function init_conf_qr!(mc::MC, ns::Int, N_up::Int)
     N_down = ns - N_up
     if N_down > 0
         available_sites = setdiff(1:ns, sites_up)
-        U_down_subset = mc.Ham.U_down[available_sites, :]
+        U_down_subset = mc.Ham.U_down[collect(available_sites), :]
 
         Q_down, R_down, p_down_subset = qr(U_down_subset', ColumnNorm())
         sites_down_indices = p_down_subset[1:N_down]
-        sites_down = available_sites[sites_down_indices]
+        sites_down = collect(available_sites)[sites_down_indices]
 
         mc.kappa_down = zeros(Int, ns)
         for (i, site) in enumerate(sites_down)
@@ -357,7 +345,7 @@ function init_conf_qr!(mc::MC, ns::Int, N_up::Int)
 end
 
 """
-    find_initial_configuration!(mc::MC, ns::Int, N_up::Int)
+    find_initial_configuration!(mc::MCState, ns::Int, N_up::Int)
 
 Find a non-singular initial configuration for Monte Carlo simulation.
 
@@ -365,7 +353,7 @@ This function uses a deterministic QR-based method to initialize particle
 configurations and compute the initial Green's function matrices.
 
 # Arguments
-- `mc::MC`: Monte Carlo state object (modified in-place)
+- `mc::MCState`: Monte Carlo state object (modified in-place)
 - `ns::Int`: Total number of sites in the lattice
 - `N_up::Int`: Number of up-spin electrons
 
@@ -379,7 +367,7 @@ configurations and compute the initial Green's function matrices.
 - `ErrorException`: If QR-based configuration produces singular matrices,
   indicating potential rank deficiency in the Hamiltonian
 """
-function find_initial_configuration!(mc::MC, ns::Int, N_up::Int)
+function find_initial_configuration!(mc::MCState, ns::Int, N_up::Int)
     init_conf_qr!(mc, ns, N_up)
 
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
@@ -411,7 +399,7 @@ end
 
 
 """
-    Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
+    Carlo.init!(mc::MCState, ctx::MCContext, params::AbstractDict)
 
 Initialize the Monte Carlo object for Carlo.jl framework integration.
 
@@ -419,7 +407,7 @@ This function sets up the Monte Carlo simulation by finding an initial
 non-singular configuration using QR-based initialization.
 
 # Arguments
-- `mc::MC`: Monte Carlo state object
+- `mc::MCState`: Monte Carlo state object
 - `ctx::MCContext`: Carlo.jl context object
 - `params::AbstractDict`: Simulation parameters dictionary
 
@@ -432,7 +420,7 @@ non-singular configuration using QR-based initialization.
 This function integrates with the Carlo.jl framework and is called automatically
 during simulation initialization to prepare the Monte Carlo state.
 """
-@inline function Carlo.init!(mc::MC, ctx::MCContext, params::AbstractDict)
+@inline function Carlo.init!(mc::MCState, ctx::MCContext, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
     ns = n1 * n2 * 3
@@ -511,7 +499,7 @@ function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_d
 end
 
 """
-    Carlo.sweep!(mc::MC, ctx::MCContext) -> Nothing
+    Carlo.sweep!(mc::MCState, ctx::MCContext) -> Nothing
 
 Perform one Monte Carlo sweep for Mott state simulation.
 
@@ -519,7 +507,7 @@ This function implements a two-spin swap update where electrons can exchange
 positions between different spin states at occupied neighboring sites.
 
 # Arguments
-- `mc::MC`: Monte Carlo state object
+- `mc::MCState`: Monte Carlo state object
 - `ctx::MCContext`: Carlo.jl context object
 
 # Algorithm
@@ -535,7 +523,7 @@ The W matrices are re-evaluated periodically (every n_occupied sweeps) to
 override numerical instability from repeated rank-1 updates. If re-evaluation
 fails due to singular matrices, a warning is issued and simulation continues.
 """
-@inline function Carlo.sweep!(mc::MC, ctx::MCContext)
+@inline function Carlo.sweep!(mc::MCState, ctx::MCContext)
     # MCMC scheme for Mott state
     # Electrons swap between different spins at occupied sites
     nn = mc.Ham.nn
@@ -607,7 +595,7 @@ fails due to singular matrices, a warning is issued and simulation continues.
 end
 
 """
-    @inline function Carlo.measure!(mc::MC, ctx::MCContext)
+    @inline function Carlo.measure!(mc::MCState, ctx::MCContext)
 
 Measures observables during the simulation and collects data.
 
@@ -615,7 +603,7 @@ This function is called periodically during the simulation to measure
 physical observables like local energy and collect them for postprocessing.
 
 # Arguments
-- `mc::MC`: Monte Carlo state object
+- `mc::MCState`: Monte Carlo state object
 - `ctx::MCContext`: Carlo.jl context object
 
 # Measured Quantities
@@ -625,7 +613,7 @@ physical observables like local energy and collect them for postprocessing.
 Measurements are taken periodically (every n_occupied sweeps) to reduce
 correlation between samples and improve measurement efficiency.
 """
-@inline function Carlo.measure!(mc::MC, ctx::MCContext)
+@inline function Carlo.measure!(mc::MCState, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
         OL = getOL(mc, mc.kappa_up, mc.kappa_down)
@@ -634,19 +622,19 @@ correlation between samples and improve measurement efficiency.
 end
 
 """
-    Carlo.register_evaluables(::Type{MC}, eval::Evaluator, params::AbstractDict)
+    Carlo.register_evaluables(::Type{MCState}, eval::Evaluator, params::AbstractDict)
 
 Register postprocessing evaluators for final analysis after Monte Carlo simulation.
 
-**IMPORTANT: This is purely for postprocessing** - these evaluators are executed 
-at the end of the simulation or during merge operations to compute final observables 
+**IMPORTANT: This is purely for postprocessing** - these evaluators are executed
+at the end of the simulation or during merge operations to compute final observables
 from the collected raw measurements. They do NOT affect the Monte Carlo dynamics.
 
-This function defines how to compute physical observables from the raw measured 
+This function defines how to compute physical observables from the raw measured
 data (:OL values) that was collected during the simulation via Carlo.measure!().
 
 # Arguments
-- `::Type{MC}`: Monte Carlo type dispatch
+- `::Type{MCState}`: Monte Carlo type dispatch
 - `eval::Evaluator`: Carlo.jl evaluator for postprocessing computations
 - `params::AbstractDict`: Simulation parameters containing lattice dimensions
 
@@ -673,7 +661,7 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
 - Minimal computational overhead during Monte Carlo sampling
 """
 @inline function Carlo.register_evaluables(
-    ::Type{MC},
+    ::Type{<:MCState},
     eval::Evaluator,
     params::AbstractDict,
 )
@@ -687,7 +675,7 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
 end
 
 """
-    Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
+    Carlo.write_checkpoint(mc::MCState, out::HDF5.Group)
 
 Save Monte Carlo state for resuming simulations or postprocessing analysis.
 
@@ -695,7 +683,7 @@ Save Monte Carlo state for resuming simulations or postprocessing analysis.
 use in simulation continuation or postprocessing workflows.
 
 # Arguments
-- `mc::MC`: Monte Carlo state to save
+- `mc::MCState`: Monte Carlo state to save
 - `out::HDF5.Group`: Output HDF5 group for writing checkpoint data
 
 # Saved Data
@@ -712,14 +700,14 @@ use in simulation continuation or postprocessing workflows.
 - Essential for resuming interrupted simulations
 - Enables analysis of specific configurations post-simulation
 """
-@inline function Carlo.write_checkpoint(mc::MC, out::HDF5.Group)
+@inline function Carlo.write_checkpoint(mc::MCState, out::HDF5.Group)
     out["kappa_up"] = Vector{Int}(mc.kappa_up)
     out["kappa_down"] = Vector{Int}(mc.kappa_down)
     return nothing
 end
 
 """
-    Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
+    Carlo.read_checkpoint!(mc::MCState, in::HDF5.Group)
 
 Restore Monte Carlo state from saved checkpoint for simulation continuation.
 
@@ -727,7 +715,7 @@ Restore Monte Carlo state from saved checkpoint for simulation continuation.
 from a specific state or initialize postprocessing analysis.
 
 # Arguments
-- `mc::MC`: Monte Carlo object to restore (modified in-place)
+- `mc::MCState`: Monte Carlo object to restore (modified in-place)
 - `in::HDF5.Group`: Input HDF5 group containing checkpoint data
 
 # Restored Data
@@ -748,8 +736,66 @@ from a specific state or initialize postprocessing analysis.
 - Essential for maintaining simulation continuity
 - Enables reproducible analysis workflows
 """
-@inline function Carlo.read_checkpoint!(mc::MC, in::HDF5.Group)
+@inline function Carlo.read_checkpoint!(mc::MCState, in::HDF5.Group)
     mc.kappa_up = Vector{Int}(read(in, "kappa_up"))
     mc.kappa_down = Vector{Int}(read(in, "kappa_down"))
     return nothing
+end
+
+@doc raw"""
+    getOL(mc::AbstractMC, kappa_up, kappa_down) -> Float64
+
+Compute the local energy estimator for quantum Monte Carlo.
+
+Calculates the observable O_L = ⟨x|H|ψ_G⟩/⟨x|ψ_G⟩, which provides an unbiased
+estimator of the ground state energy in the Stochastic Series Expansion method.
+
+In the spinon mean-field framework:
+- |ψ_G⟩ is the Slater Determinant spinon state (Gutzwiller projected)
+- |x⟩ = |κ_up⟩ ⊗ |κ_down⟩ is a particular spinon configuration
+- H is the original Heisenberg Hamiltonian (not the mean-field one!)
+
+The ratio gives the local contribution to the energy from configuration |x⟩.
+
+# Arguments
+- `mc::AbstractMC`: Monte Carlo state containing W_up, W_down matrices
+- `kappa_up::Vector{Int}`: Current up-spinon configuration
+- `kappa_down::Vector{Int}`: Current down-spinon configuration
+
+# Returns
+- `Float64`: Local energy contribution from this configuration
+
+# Algorithm
+1. Compute H|x⟩ using getxprime() to get all reachable configurations
+2. For diagonal terms: directly add the Ising contributions
+3. For off-diagonal terms: weight by the wavefunction amplitude ratios W_up, W_down
+4. Sum all contributions to get the local energy
+
+# Physics Notes
+- This is the "local energy" in variational Monte Carlo terminology
+- Fluctuations in O_L reflect the quality of the trial wavefunction
+- Used to measure energy and other observables in quantum spin liquids
+- The Hamiltonian H must be the original physical one, not the mean-field approximation
+
+# Performance Notes
+- Critical function called in every Monte Carlo step
+- Bounds checking disabled with @inbounds for performance
+- Uses efficient iteration over pairs() for dictionary access
+"""
+@inline function getOL(mc::MCState, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+    @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
+    # if double occupied state, no possibility to have a non-zero overlap
+
+    OL = 0.0
+    xprime = getxprime(mc.Ham, kappa_up, kappa_down)
+    @inbounds for (conf, coff) in pairs(xprime)
+        if conf == (-1, -1, -1, -1)
+            OL += coff
+        else
+            update_up = mc.W_up[conf[1], conf[2]]
+            update_down = mc.W_down[conf[3], conf[4]]
+            OL += coff * update_up * update_down
+        end
+    end
+    return OL
 end

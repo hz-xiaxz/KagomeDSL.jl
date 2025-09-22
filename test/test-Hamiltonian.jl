@@ -186,8 +186,8 @@ end
         kappa_down = [0, 1]
 
         # Test that return type is always Float64
-        @inferred Sz(1, kappa_up, kappa_down)
-        @inferred Sz(2, kappa_up, kappa_down)
+        @test (@inferred Sz(1, kappa_up, kappa_down)) == 0.5
+        @test (@inferred Sz(2, kappa_up, kappa_down)) == -0.5
     end
 
     @testset "Large system" begin
