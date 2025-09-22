@@ -14,6 +14,35 @@ end
 const MC = MCState
 
 """
+    MCState
+
+Represents the current state of a Variational Monte Carlo (VMC) simulation.
+This mutable struct holds all necessary information to perform Monte Carlo
+updates and measurements for a given quantum spin liquid system.
+
+# Fields
+- `Ham::Hamiltonian{N_up, N_down}`: The Hamiltonian defining the physical system,
+  parameterized by the number of up (`N_up`) and down (`N_down`) spinons.
+- `kappa_up::Vector{Int}`: The configuration vector for up-spinons. Non-zero
+  entries indicate occupied sites, with the value representing the orbital index.
+- `kappa_down::Vector{Int}`: The configuration vector for down-spinons, similar to `kappa_up`.
+- `W_up::AbstractMatrix`: The one-particle Green's function matrix for up-spinons.
+  This matrix is crucial for efficient calculation of wavefunction ratios during updates.
+- `W_down::AbstractMatrix`: The one-particle Green's function matrix for down-spinons.
+- `W_up_col_cache::AbstractVector`: Pre-allocated cache for column operations during `W_up` updates.
+  Used to minimize memory allocations and improve performance.
+- `W_up_row_cache::AbstractVector`: Pre-allocated cache for row operations during `W_up` updates.
+- `W_down_col_cache::AbstractVector`: Pre-allocated cache for column operations during `W_down` updates.
+- `W_down_row_cache::AbstractVector`: Pre-allocated cache for row operations during `W_down` updates.
+
+# Notes
+- The `kappa` vectors encode the real-space configuration of spinons.
+- The `W` matrices are derived from the Hamiltonian's orbitals and the `kappa` configurations.
+- The cache arrays are essential for achieving high performance through in-place rank-1 updates
+  of the Green's function matrices, avoiding costly memory reallocations.
+"""
+
+"""
     reevaluateW!(mc::MCState)
 
 Recalculate the one-particle Green's function matrices W_up and W_down.
