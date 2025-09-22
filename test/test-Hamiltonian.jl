@@ -97,43 +97,43 @@ end
 end
 
 @testset "getxprime" begin
-    # Use a small 6-site lattice
-    lat = DoubleKagome(1.0, 2, 1, (false, false))
-    N_up = 3
-    N_down = 3
-    ham = KagomeDSL.Hamiltonian(N_up, N_down, lat)
-
-    # Neel-like state: up on sites 1,2,3, down on 4,5,6
-    kappa_up = [1, 2, 3, 0, 0, 0]
-    kappa_down = [0, 0, 0, 1, 2, 3]
-
+    # TODO More careful tests here
+    DK = DoubleKagome(1.0, 4, 3, (false, false))
+    N_up = 1
+    N_down = 0
+    ham = KagomeDSL.Hamiltonian(N_up, N_down, DK)
+    kappa_up = vcat([1], fill(0, 35))
+    kappa_down = vcat([0], collect(1:35))
+    # Sx Sy will flip 1 to spin down, the nearest neighbor will be spin up
+    # this gives 2 configurations
     xprime = KagomeDSL.getxprime(ham, kappa_up, kappa_down)
-
-    # Check Sz interactions
-    # Bonds are (1,2), (1,3), (2,3), (2,4), (4,5), (4,6), (5,6)
-    # (1,2): up-up -> 0.5*0.5 = 0.25
-    # (1,3): up-up -> 0.25
-    # (2,3): up-up -> 0.25
-    # (2,4): up-down -> 0.5*(-0.5) = -0.25
-    # (4,5): down-down -> (-0.5)*(-0.5) = 0.25
-    # (4,6): down-down -> 0.25
-    # (5,6): down-down -> 0.25
-    # Total Sz = 3*0.25 - 0.25 + 3*0.25 = 1.25
-    @test xprime[(-1, -1, -1, -1)] ≈ 1.25
-
-    # Check spin-flip interactions
-    # Only bond (2,4) has up-down spins.
-    # S+_2 S-_4 is not possible (2 is up, 4 is down)
-    # S-_2 S+_4 is possible.
-    # i=2, j=4. i_up=2, j_down=1.
-    # new_conf = (j, i_up, i, j_down) = (4, 2, 2, 1)
-    # xprime should contain (4, 2, 2, 1) with value -0.5
-    conf = (4, 2, 2, 1)
-    @test haskey(xprime, conf)
-    @test xprime[conf] == -0.5
-
-    # Total number of keys should be 2 (1 for Sz, 1 for spin-flip)
-    @test length(keys(xprime)) == 2
+    @test length(keys(xprime)) == 3
+    # Sz interaction
+    nn = ham.nn
+    Sz_sum = (length(nn) - 2) * (1 / 4)
+    Sz_sum += (2 * (-1 / 4))
+    @test xprime[(-1, -1, -1, -1)] == Sz_sum
+    # Sx Sy interaction, only happens in the bonds having site 1
+    Sx_Sy_sum = 0.0
+    # Sx Sy = 1/2()
+    # x1 is flip 1 down, filp 2 up
+    kappa_up1 = vcat([0], [1], fill(0, 34))
+    kappa_down1 = vcat([1], [0], collect(2:35))
+    k_up = 2
+    l_up = 1
+    k_down = 1
+    l_down = 1
+    conf = (k_up, l_up, k_down, l_down)
+    @test conf in keys(xprime)
+    @test xprime[conf] == -1 / 2
+    # x2 is flip 1 up, flip 3 down
+    k_up_3 = 3
+    l_up_3 = 1
+    k_down_3 = 1
+    l_down_3 = 2
+    conf_3 = (k_up_3, l_up_3, k_down_3, l_down_3)
+    @test conf_3 in keys(xprime)
+    @test xprime[conf_3] == -1 / 2
 end
 
 @testset "getOL" begin
