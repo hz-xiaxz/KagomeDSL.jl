@@ -447,7 +447,7 @@ efficient Monte Carlo sampling since we only need to consider active bonds.
 function get_nn(H_mat::AbstractMatrix)
     # Get upper triangular non-zero elements
     nn = Tuple{Int,Int}[]
-    for j = 1:size(H_mat, 2)
+    for j = 1:axes(H_mat, 2)
         for i = 1:(j-1)
             if !iszero(H_mat[i, j])
                 push!(nn, (i, j))
