@@ -417,7 +417,7 @@ Monte Carlo calculations of quantum spin liquid properties:
 - Represents a quantum spin liquid state where spins are fractionalized
 - Correlations arise from quantum fluctuations around the mean-field state
 """
-struct Hamiltonian{N_up, N_down}
+struct Hamiltonian{N_up,N_down}
     U_up::Matrix{ComplexF64}
     U_down::Matrix{ComplexF64}
     H_mat::Matrix{ComplexF64}
@@ -446,13 +446,20 @@ efficient Monte Carlo sampling since we only need to consider active bonds.
 """
 function get_nn(H_mat::AbstractMatrix)
     # Get upper triangular non-zero elements
-    indices = findall(!iszero, UpperTriangular(H_mat))
-    return [(i[1], i[2]) for i in indices]
+    nn = Tuple{Int,Int}[]
+    for j = 1:size(H_mat, 2)
+        for i = 1:(j-1)
+            if !iszero(H_mat[i, j])
+                push!(nn, (i, j))
+            end
+        end
+    end
+    return nn
 end
 
 abstract type AbstractOperator end
 
-struct SpinPlusOperator{N_up, N_down} <: AbstractOperator
+struct SpinPlusOperator{N_up,N_down} <: AbstractOperator
     site::Int
 end
 
@@ -491,19 +498,27 @@ function Hamiltonian(
     link_inter = pi_link_inter,
     B = 0.0,
 )
-    return Hamiltonian(Val(N_up), Val(N_down), lat; link_in=link_in, link_inter=link_inter, B=B)
+    return Hamiltonian(
+        Val(N_up),
+        Val(N_down),
+        lat;
+        link_in = link_in,
+        link_inter = link_inter,
+        B = B,
+    )
 end
 
 function Hamiltonian(
-    ::Val{N_up}, ::Val{N_down},
+    ::Val{N_up},
+    ::Val{N_down},
     lat::AbstractLattice;
     link_in = pi_link_in,
     link_inter = pi_link_inter,
     B = 0.0,
-) where {N_up, N_down}
+) where {N_up,N_down}
     H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
-    
+
     ns = size(H_mat, 1)
     U_up_plus = zeros(ComplexF64, ns, 0)
     U_down_minus = zeros(ComplexF64, ns, 0)
@@ -512,7 +527,7 @@ function Hamiltonian(
     end
 
     nn = get_nn(H_mat)
-    return Hamiltonian{N_up, N_down}(U_up, U_down, H_mat, nn, U_up_plus, U_down_minus)
+    return Hamiltonian{N_up,N_down}(U_up, U_down, H_mat, nn, U_up_plus, U_down_minus)
 end
 
 

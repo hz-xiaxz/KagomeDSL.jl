@@ -1,5 +1,5 @@
-mutable struct MCState{N_up, N_down} <: Carlo.AbstractMC
-    Ham::Hamiltonian{N_up, N_down}
+mutable struct MCState{N_up,N_down} <: Carlo.AbstractMC
+    Ham::Hamiltonian{N_up,N_down}
     kappa_up::Vector{Int}
     kappa_down::Vector{Int}
     W_up::AbstractMatrix
@@ -139,7 +139,7 @@ function relabel_configuration!(kappa::Vector{Int})
     return nothing
 end
 
-function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) where {N_up, N_down}
+function spin_plus_transition(mc_n::MCState{N_up,N_down}, site::Int) where {N_up,N_down}
     # 1. Check for a down spin at the site
     if !is_occupied(mc_n.kappa_down, site)
         throw(ArgumentError("No down spin to flip at site $site"))
@@ -162,15 +162,15 @@ function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) where {N_u
     new_N_up = N_up + 1
     new_N_down = N_down - 1
 
-    new_ham = Hamiltonian{new_N_up, new_N_down}(
-        mc_n.Ham.U_up_plus, 
-        mc_n.Ham.U_down_minus, 
-        mc_n.Ham.H_mat, 
+    new_ham = Hamiltonian{new_N_up,new_N_down}(
+        mc_n.Ham.U_up_plus,
+        mc_n.Ham.U_down_minus,
+        mc_n.Ham.H_mat,
         mc_n.Ham.nn,
         # The new U_up_plus and U_down_minus are not available.
         # For now, I will just put empty matrices.
-        zeros(ComplexF64, size(mc_n.Ham.H_mat,1), 0),
-        zeros(ComplexF64, size(mc_n.Ham.H_mat,1), 0)
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), 0),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), 0),
     )
 
     # Create the new MCState. W matrices are zero-initialized.
@@ -179,7 +179,7 @@ function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) where {N_u
         new_kappa_up,
         new_kappa_down,
         zeros(eltype(new_ham.U_up), size(new_ham.U_up, 1), new_N_up),
-        zeros(eltype(new_ham.U_down), size(new_ham.U_down, 1), new_N_down)
+        zeros(eltype(new_ham.U_down), size(new_ham.U_down, 1), new_N_down),
     )
 
     # The W matrices need to be calculated.
@@ -188,13 +188,19 @@ function spin_plus_transition(mc_n::MCState{N_up, N_down}, site::Int) where {N_u
     return new_mc
 end
 
-function apply_operator(op::SpinPlusOperator{N_up, N_down}, state::MCState{N_up, N_down}) where {N_up, N_down}
+function apply_operator(
+    op::SpinPlusOperator{N_up,N_down},
+    state::MCState{N_up,N_down},
+) where {N_up,N_down}
     return spin_plus_transition(state, op.site)
 end
 
-function get_log_det_ratio(mc_n::MCState{N_up, N_down}, mc_np1::MCState{N_up_p1, N_down_m1}) where {N_up, N_down, N_up_p1, N_down_m1}
+function get_log_det_ratio(
+    mc_n::MCState{N_up,N_down},
+    mc_np1::MCState{N_up_p1,N_down_m1},
+) where {N_up,N_down,N_up_p1,N_down_m1}
     # This is inefficient as it re-calculates tilde_U matrices
-    
+
     # logdet for state n
     tilde_U_up_n = tilde_U(mc_n.Ham.U_up, mc_n.kappa_up)
     tilde_U_down_n = tilde_U(mc_n.Ham.U_down, mc_n.kappa_down)
@@ -216,7 +222,7 @@ function measure_S_plus(mc::MCState, site::Int)
     mc_np1 = spin_plus_transition(mc, site)
 
     log_ratio = get_log_det_ratio(mc, mc_np1)
-    
+
     ratio = exp(log_ratio)
     return ratio, abs2(ratio)
 end
@@ -315,12 +321,12 @@ The cache arrays enable zero-allocation updates of the Green's function matrices
 using rank-1 update operations.
 """
 function MCState(
-    Ham::Hamiltonian{N_up, N_down},
+    Ham::Hamiltonian{N_up,N_down},
     kappa_up::Vector{Int},
     kappa_down::Vector{Int},
     W_up::AbstractMatrix,
     W_down::AbstractMatrix,
-) where {N_up, N_down}
+) where {N_up,N_down}
     ns, N_up_W = size(W_up)
     _, N_down_W = size(W_down)
     @assert ns != 0
@@ -330,7 +336,7 @@ function MCState(
     @assert N_down_W == N_down
 
 
-    return MCState{N_up, N_down}(
+    return MCState{N_up,N_down}(
         Ham,
         kappa_up,
         kappa_down,
@@ -438,8 +444,8 @@ function init_conf_qr!(mc::MCState, ns::Int, N_up::Int, N_down::Int)
     # This should give a non-singular tilde_U matrix if possible.
 
     # For kappa_up
-    Q_up, R_up, p_up = qr(mc.Ham.U_up', ColumnNorm())
-    sites_up = p_up[1:N_up]
+    F_up = qr(mc.Ham.U_up', ColumnNorm())
+    sites_up = F_up.p[1:N_up]
     mc.kappa_up = zeros(Int, ns)
     for (i, site) in enumerate(sites_up)
         mc.kappa_up[site] = i
@@ -450,8 +456,8 @@ function init_conf_qr!(mc::MCState, ns::Int, N_up::Int, N_down::Int)
         available_sites = setdiff(1:ns, sites_up)
         U_down_subset = mc.Ham.U_down[collect(available_sites), :]
 
-        Q_down, R_down, p_down_subset = qr(U_down_subset', ColumnNorm())
-        sites_down_indices = p_down_subset[1:N_down]
+        F_down = qr(U_down_subset', ColumnNorm())
+        sites_down_indices = F_down.p[1:N_down]
         sites_down = collect(available_sites)[sites_down_indices]
 
         mc.kappa_down = zeros(Int, ns)
@@ -749,7 +755,7 @@ correlation between samples and improve measurement efficiency.
         ns = length(mc.kappa_up)
         s_plus_amp = 0.0 + 0.0im
         s_plus_amp_sq = 0.0
-        for i in 1:ns
+        for i = 1:ns
             amp, amp_sq = measure_S_plus(mc, i)
             s_plus_amp += amp
             s_plus_amp_sq += amp_sq
@@ -807,15 +813,14 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
     n2 = params[:n2]
     ns = n1 * n2 * 3
     evaluate!(eval, :energy, (:OL,)) do OL
-        return OL / ns
+        OL / ns
     end
     evaluate!(eval, :S_plus_amp, (:S_plus_amp,)) do S_plus_amp
-        return S_plus_amp
+        S_plus_amp
     end
     evaluate!(eval, :S_plus_amp_sq, (:S_plus_amp_sq,)) do S_plus_amp_sq
-        return S_plus_amp_sq
+        S_plus_amp_sq
     end
-    return nothing
 end
 
 """
@@ -845,8 +850,8 @@ use in simulation continuation or postprocessing workflows.
 - Enables analysis of specific configurations post-simulation
 """
 @inline function Carlo.write_checkpoint(mc::MCState, out::HDF5.Group)
-    out["kappa_up"] = Vector{Int}(mc.kappa_up)
-    out["kappa_down"] = Vector{Int}(mc.kappa_down)
+    out["kappa_up"] = mc.kappa_up
+    out["kappa_down"] = mc.kappa_down
     return nothing
 end
 
@@ -881,8 +886,8 @@ from a specific state or initialize postprocessing analysis.
 - Enables reproducible analysis workflows
 """
 @inline function Carlo.read_checkpoint!(mc::MCState, in::HDF5.Group)
-    mc.kappa_up = Vector{Int}(read(in, "kappa_up"))
-    mc.kappa_down = Vector{Int}(read(in, "kappa_down"))
+    mc.kappa_up = read(in, "kappa_up")
+    mc.kappa_down = read(in, "kappa_down")
     return nothing
 end
 

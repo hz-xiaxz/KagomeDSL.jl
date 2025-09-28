@@ -623,7 +623,17 @@ end
 
 @testset "Checkpointing" begin
     param = Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 1, :seed => 123, :thermalization => 0),
+    )
     mc1 = MC(param)
+    Carlo.init!(mc1, ctx, param)
+
+    # Run a few sweeps to change the configuration
+    for _ in 1:10
+        Carlo.sweep!(mc1, ctx)
+    end
+
     mc2 = MC(param)
 
     # Create a temporary file for checkpointing
@@ -639,7 +649,6 @@ end
             Carlo.read_checkpoint!(mc2, group)
         end
     end
-
 
     @test mc1.kappa_up == mc2.kappa_up
     @test mc1.kappa_down == mc2.kappa_down

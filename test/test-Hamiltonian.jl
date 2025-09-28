@@ -244,13 +244,13 @@ end
         xprime = Dict{NTuple{4,Int},Float64}()
 
         # Test S+_i S-_j: site 2(↓) -> site 1(↑)
-        spinInteraction!(xprime, kappa_up, kappa_down, 2, 1)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 2, 1)
         @test haskey(xprime, (2, 1, 1, 1))  # new configuration
         @test xprime[(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
 
         # Test S-_i S+_j: site 1(↑) -> site 2(↓)
         xprime = Dict{NTuple{4,Int},Float64}()
-        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
         @test haskey(xprime, (2, 1, 1, 1))  # new configuration
         @test xprime[(2, 1, 1, 1)] ≈ -0.5    # coefficient should be -1/2
     end
@@ -261,10 +261,10 @@ end
         xprime = Dict{NTuple{4,Int},Float64}()
 
         # Test when both sites have same spin
-        spinInteraction!(xprime, kappa_up, kappa_down, 1, 3)  # both up
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 3)  # both up
         @test isempty(xprime)
 
-        spinInteraction!(xprime, kappa_up, kappa_down, 2, 3)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 2, 3)
         @test !isempty(xprime)
         @test xprime[(2, 2, 3, 1)] == -0.5
     end
@@ -275,8 +275,8 @@ end
         xprime = Dict{NTuple{4,Int},Float64}()
 
         # Apply same interaction twice
-        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
-        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
         @test xprime[(2, 1, 1, 1)] ≈ -1.0  # coefficients should add
     end
 
@@ -285,14 +285,14 @@ end
         kappa_up = [1]
         kappa_down = [0]
         xprime = Dict{NTuple{4,Int},Float64}()
-        spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
         @test isempty(xprime)  # no self-interaction
 
         # Empty configuration
         kappa_up = Int[]
         kappa_down = Int[]
         xprime = Dict{NTuple{4,Int},Float64}()
-        @test_throws BoundsError spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
+        @test_throws BoundsError KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 1)
     end
 
     @testset "Large system" begin
@@ -303,7 +303,7 @@ end
         kappa_down[2] = 1  # down spin at second site
 
         xprime = Dict{NTuple{4,Int},Float64}()
-        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
 
         @test haskey(xprime, (2, 1, 1, 1))
         @test xprime[(2, 1, 1, 1)] ≈ -0.5
@@ -318,7 +318,7 @@ end
         xprime[(2, 1, 1, 1)] = 0.25
 
         # Apply interaction
-        spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
         @test xprime[(2, 1, 1, 1)] ≈ -0.25  # 0.25 - 0.5
     end
 
@@ -328,7 +328,7 @@ end
         xprime = Dict{NTuple{4,Int},Float64}()
 
         # Test that the function maintains type stability
-        @inferred spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
+        @inferred KagomeDSL.spinInteraction!(xprime, kappa_up, kappa_down, 1, 2)
     end
 end
 @testset "apply_boundary_conditions!" begin
@@ -774,4 +774,26 @@ end
         link_val = KagomeDSL.pi_link_inter[(1, 5, -1, 0)]
         @test H_B_pbc[s1, s2] == -link_val * exp(im * phase)
     end
+end
+
+@testset "get_nn" begin
+    lat = KagomeDSL.DoubleKagome(1.0, 2, 2, (false, false))
+    H = KagomeDSL.Hmat(lat)
+    nn = KagomeDSL.get_nn(H)
+    
+    # Expected bonds from pi_link_in for 2 unit cells
+    expected_in_cell = [
+        (1,2), (1,3), (2,3), (2,4), (4,5), (4,6), (5,6), # cell 1
+        (7,8), (7,9), (8,9), (8,10), (10,11), (10,12), (11,12) # cell 2
+    ]
+
+    # Expected bonds from pi_link_inter for (dx,dy)=(0,1) which connects cell 1 and 2
+    expected_inter_cell = [
+        (3, 1+6), (6, 2+6), (6, 4+6)
+    ]
+    
+    expected_nn = sort(vcat(expected_in_cell, expected_inter_cell))
+    
+    @test length(nn) == length(expected_nn)
+    @test sort(nn) == expected_nn
 end
