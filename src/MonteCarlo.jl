@@ -167,10 +167,11 @@ function spin_plus_transition(mc_n::MCState{N_up,N_down}, site::Int) where {N_up
         mc_n.Ham.U_down_minus,
         mc_n.Ham.H_mat,
         mc_n.Ham.nn,
-        # The new U_up_plus and U_down_minus are not available.
-        # For now, I will just put empty matrices.
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), 0),
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), 0),
+        # For the new U_up_plus and U_down_minus, we would need orbitals for
+        # (N_up+2, N_down-2) and (N_up, N_down) sectors respectively.
+        # For now, we'll leave them empty since they're not needed immediately.
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_up + 1),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_down - 1)),
     )
 
     # Create the new MCState. W matrices are zero-initialized.

@@ -520,10 +520,15 @@ function Hamiltonian(
     U_up, U_down = orbitals(H_mat, N_up, N_down)
 
     ns = size(H_mat, 1)
-    U_up_plus = zeros(ComplexF64, ns, 0)
-    U_down_minus = zeros(ComplexF64, ns, 0)
+    # Pre-compute orbitals for neighboring sectors needed for S+ transitions
+    # U_up_plus: orbitals for N_up+1 sector (needed when S+ increases up-spin count)
+    # U_down_minus: orbitals for N_down-1 sector (needed when S+ decreases down-spin count)
     if N_down > 0
         U_up_plus, U_down_minus = orbitals(H_mat, N_up + 1, N_down - 1)
+    else
+        # If N_down = 0, we can't have S+ transitions (no down spins to flip)
+        U_up_plus = zeros(ComplexF64, ns, N_up + 1)
+        U_down_minus = zeros(ComplexF64, ns, 0)  # N_down - 1 = -1, invalid
     end
 
     nn = get_nn(H_mat)
