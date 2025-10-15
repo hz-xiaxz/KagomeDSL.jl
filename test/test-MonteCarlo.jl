@@ -133,6 +133,8 @@ end
             [],
             zeros(ns, N_up + 1),
             zeros(ns, N_down - 1),
+            zeros(ns, max(0, N_up - 1)),
+            zeros(ns, N_down + 1),
         )
 
         mc =
@@ -302,6 +304,8 @@ end
             [],
             zeros(4, 3),
             zeros(4, 1),
+            zeros(4, 1),
+            zeros(4, 3),
         )
         kappa_up = [1, 2]
         kappa_down = [2, 1]
@@ -335,6 +339,8 @@ end
             [],
             zeros(16, 5),
             zeros(16, 3),
+            zeros(16, 3),
+            zeros(16, 5),
         )
         kappa_up = [1, 2, 3, 4]
         kappa_down = [4, 3, 2, 1]
@@ -414,6 +420,8 @@ end
                 [],
                 zeros(n, 4),
                 zeros(n, 2),
+                zeros(n, 2),
+                zeros(n, 4),
             ),
             zeros(Int, n),
             zeros(Int, n),
@@ -568,6 +576,8 @@ end
         Tuple{Int,Int}[],
         zeros(ComplexF64, ns, N_up + 1),
         zeros(ComplexF64, ns, N_down - 1),
+        zeros(ComplexF64, ns, max(0, N_up - 1)),
+        zeros(ComplexF64, ns, N_down + 1),
     )
 
     mc_singular = MC(

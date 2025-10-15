@@ -172,6 +172,8 @@ function spin_plus_transition(mc_n::MCState{N_up,N_down}, site::Int) where {N_up
         # For now, we'll leave them empty since they're not needed immediately.
         zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_up + 1),
         zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_down - 1)),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_up - 1)),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_down + 1),
     )
 
     # Create the new MCState. W matrices are zero-initialized.
@@ -194,6 +196,65 @@ function apply_operator(
     state::MCState{N_up,N_down},
 ) where {N_up,N_down}
     return spin_plus_transition(state, op.site)
+end
+
+function spin_minus_transition(mc_n::MCState{N_up,N_down}, site::Int) where {N_up,N_down}
+    # 1. Check for an up spin at the site
+    if !is_occupied(mc_n.kappa_up, site)
+        throw(ArgumentError("No up spin to flip at site $site"))
+    end
+
+    # 2. Create new kappa vectors
+    new_kappa_up = copy(mc_n.kappa_up)
+    new_kappa_down = copy(mc_n.kappa_down)
+
+    # 3. Apply spin flip: site 'site' loses an up spin and gains a down spin
+    # The new down spin gets the (N_down + 1)-th orbital
+    new_kappa_down[site] = N_down + 1 # Assign the new orbital index
+    new_kappa_up[site] = 0
+
+    # 4. Relabel
+    relabel_configuration!(new_kappa_up)
+    relabel_configuration!(new_kappa_down)
+
+    # 5. Create new Hamiltonian and MCState
+    new_N_up = N_up - 1
+    new_N_down = N_down + 1
+
+    new_ham = Hamiltonian{new_N_up,new_N_down}(
+        mc_n.Ham.U_up_minus,
+        mc_n.Ham.U_down_plus,
+        mc_n.Ham.H_mat,
+        mc_n.Ham.nn,
+        # For the new U_up_plus and U_down_minus, we would need orbitals for
+        # (N_up, N_down) and (N_up-2, N_down+2) sectors respectively.
+        # For now, we'll leave them empty since they're not needed immediately.
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_up + 1),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_down - 1)),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_up - 1)),
+        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_down + 1),
+    )
+
+    # Create the new MCState. W matrices are zero-initialized.
+    new_mc = MCState(
+        new_ham,
+        new_kappa_up,
+        new_kappa_down,
+        zeros(eltype(new_ham.U_up), size(new_ham.U_up, 1), new_N_up),
+        zeros(eltype(new_ham.U_down), size(new_ham.U_down, 1), new_N_down),
+    )
+
+    # The W matrices need to be calculated.
+    reevaluateW!(new_mc)
+
+    return new_mc
+end
+
+function apply_operator(
+    op::SpinMinusOperator{N_up,N_down},
+    state::MCState{N_up,N_down},
+) where {N_up,N_down}
+    return spin_minus_transition(state, op.site)
 end
 
 function get_log_det_ratio(
@@ -660,7 +721,6 @@ fails due to singular matrices, a warning is issued and simulation continues.
     # MCMC scheme for Mott state
     # Electrons swap between different spins at occupied sites
     nn = mc.Ham.nn
-    ns = length(mc.kappa_up)
     # calculate the number of neighbor states Z_{\mu}
     Zmu = Z(nn, mc.kappa_up, mc.kappa_down)
     Zmax = length(nn)
