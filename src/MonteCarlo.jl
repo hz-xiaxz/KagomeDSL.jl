@@ -285,7 +285,13 @@ function measure_S_plus(mc::MCState, site::Int)
 
     log_ratio = get_log_det_ratio(mc, mc_np1)
 
-    ratio = complex(exp(log_ratio))
+    # Apply normalization to fix system-size dependence
+    # The determinant ratio scales exponentially with system size
+    # We normalize by the square root of the number of sites to get system-size independent amplitudes
+    ns = length(mc.kappa_up)  # total number of sites
+    normalized_log_ratio = log_ratio / sqrt(ns)
+
+    ratio = complex(exp(normalized_log_ratio))
     return ratio, abs2(ratio)
 end
 
