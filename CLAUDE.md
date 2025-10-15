@@ -112,6 +112,17 @@ The core development loop is to:
 
 -   **Model Definition**: Physical models are defined by the `Hamiltonian` and the `Lattice`. These should contain all necessary parameters (e.g., `J`, lattice size), making them easy to pass to solver functions.
 -   **Algorithm Abstraction**: The core logic of an algorithm (e.g., a VMC update step) is separated from the specific model it's applied to. This is a key design principle of the project.
+-   **Simulation Parameter Restrictions** (CRITICAL - Always Follow):
+    -   **Lattice Size**: Always use `n1 = n2 = 4*n` where n is a positive integer. This ensures proper lattice symmetry and avoids boundary effects.
+    -   **Imbalance**: For Landau Level (LL) simulations, imbalance must be:
+        - Even numbers only (0, 2, 4, 6, 8, 10, 14, ...)
+        - No larger than `ns ÷ 2` where `ns = n1 * n2 * 3`
+        - Examples: For 4×4 system (ns=48), max imbalance = 24
+    -   **Landau Level Testing**: When testing LL physics:
+        - **Always** set `B ≠ 0` (magnetic field must be non-zero)
+        - **Always** use `N_up = N_down` (balanced particles)
+        - Calculate B-field as: `B = imbalance * π / (n1 * n2 * 2√3)`
+    -   **Boundary Conditions**: Use `PBC = (true, true)` and `antiPBC = (false, true)` for LL simulations
 -   **Reproducibility**:
     -   All simulations must be runnable from a script in `scripts/` that saves the parameters used.
     -   **Always seed the random number generator** (using `Random; Random.seed!(1234)`) for Monte Carlo simulations to ensure results are reproducible.
