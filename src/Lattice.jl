@@ -77,7 +77,7 @@ function DoubleKagome(
     @assert n1 % 2 == 0 "n1 must be even in DoubleKagome"
     a = 2t
     a1 = [2a, 0.0]
-    a2 = [0.5a, 0.5√3a]
+    a2 = [0.5a, 0.5*√3a]
 
     # coordinates of each site in the unit cell
     r1 = [0.0, 0.0]
@@ -85,7 +85,7 @@ function DoubleKagome(
     r3 = 0.5 * a2
     r4 = 0.5 * a1
     r5 = 0.75 * a1
-    r6 = [2.5t, 0.5√3t]
+    r6 = [2.5t, 0.5*√3t]
     r = [r1, r2, r3, r4, r5, r6]
 
     return DoubleKagome(n1, n2, t, a1, a2, r, PBC, antiPBC)
