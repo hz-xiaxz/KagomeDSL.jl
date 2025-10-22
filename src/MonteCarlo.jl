@@ -1013,5 +1013,5 @@ The ratio gives the local contribution to the energy from configuration |x⟩.
             OL += coff * update_up * update_down
         end
     end
-    return OL
+    return real(OL)
 end
