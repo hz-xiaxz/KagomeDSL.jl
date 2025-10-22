@@ -88,15 +88,11 @@ The core development loop is to:
 - For function calls with keyword arguments, use an explicit `;` for clarity.
   For example, code like this:
   ```julia
-  ...
   Position(; line=i-1, character=m.match.offset-1)
-  ...
   ```
   is preferred over:
   ```julia
-  ...
   Position(line=i-1, character=m.match.offset-1)
-  ...
   ```
 
 - **ONLY INCLUDE COMMENTS WHERE TRULY NECESSARY**.
