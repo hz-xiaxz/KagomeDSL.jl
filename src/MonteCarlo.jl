@@ -9,6 +9,12 @@ mutable struct MCState{N_up,N_down} <: Carlo.AbstractMC
     W_up_row_cache::AbstractVector
     W_down_col_cache::AbstractVector
     W_down_row_cache::AbstractVector
+    # Cached log determinant for off-diagonal measurements
+    log_det_cached::ComplexF64 # Change to ComplexF64
+    log_det_valid::Bool
+    # Cached inverse tilde_U matrices
+    U_upinvs::AbstractMatrix
+    U_downinvs::AbstractMatrix
 end
 
 const MC = MCState
@@ -71,11 +77,15 @@ function reevaluateW!(mc::MCState)
     # Calculate inverse matrices
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-    U_upinvs = tilde_U_up \ I
-    U_downinvs = tilde_U_down \ I
+    mc.U_upinvs = inv(tilde_U_up)
+    mc.U_downinvs = inv(tilde_U_down)
     # Calculate W matrices using matrix multiplication
-    mc.W_up = mc.Ham.U_up * U_upinvs
-    mc.W_down = mc.Ham.U_down * U_downinvs
+    mc.W_up = mc.Ham.U_up * mc.U_upinvs
+    mc.W_down = mc.Ham.U_down * mc.U_downinvs
+
+    # Cache the log-determinant
+    mc.log_det_cached = logdet(tilde_U_up) + logdet(tilde_U_down)
+    mc.log_det_valid = true
 
     return nothing
 end
@@ -257,37 +267,79 @@ function apply_operator(
     return spin_minus_transition(state, op.site)
 end
 
-function get_log_det_ratio(
-    mc_n::MCState{N_up,N_down},
-    mc_np1::MCState{N_up_p1,N_down_m1},
-) where {N_up,N_down,N_up_p1,N_down_m1}
-    # This is inefficient as it re-calculates tilde_U matrices
+function calculate_log_det_ratio_spin_plus(mc_n::MCState{N_up, N_down}, site::Int) where {N_up, N_down}
+    # Efficiently calculate the log determinant ratio for a S+ move at a given site.
 
-    # logdet for state n
-    tilde_U_up_n = tilde_U(mc_n.Ham.U_up, mc_n.kappa_up)
-    tilde_U_down_n = tilde_U(mc_n.Ham.U_down, mc_n.kappa_down)
-    log_det_n = real(logdet(tilde_U_up_n)) + real(logdet(tilde_U_down_n))
+    # 1. Ratio for the down-spin sector (particle removed)
+    l_down = mc_n.kappa_down[site]
+    tilde_U_down = tilde_U(mc_n.Ham.U_down, mc_n.kappa_down)
+    log_det_down_n = logdet(tilde_U_down)
 
-    # logdet for state n+1
-    tilde_U_up_np1 = tilde_U(mc_np1.Ham.U_up, mc_np1.kappa_up)
-    tilde_U_down_np1 = tilde_U(mc_np1.Ham.U_down, mc_np1.kappa_down)
-    log_det_np1 = real(logdet(tilde_U_up_np1)) + real(logdet(tilde_U_down_np1))
+    new_tilde_U_down = tilde_U_down[[1:l_down-1; l_down+1:end], setdiff(1:end, l_down)]
 
-    return log_det_np1 - log_det_n
+    log_det_down_np1 = logdet(new_tilde_U_down)
+
+    log_det_ratio_down = log_det_down_np1 - log_det_down_n
+
+    # 2. Ratio for the up-spin sector (particle added)
+    new_row_up = mc_n.Ham.U_up_plus[site, :]
+    vec_up = mc_n.U_upinvs * new_row_up[1:N_up]
+    log_det_ratio_up = log(1 + new_row_up[N_up+1] - dot(new_row_up[1:N_up], vec_up))
+
+    return log_det_ratio_up + log_det_ratio_down
 end
+
+function calculate_log_det_ratio_spin_minus(mc_n::MCState{N_up, N_down}, site::Int) where {N_up, N_down}
+    # Efficiently calculate the log determinant ratio for a S- move at a given site.
+
+    # 1. Ratio for the up-spin sector (particle removed)
+    l_up = mc_n.kappa_up[site]
+    tilde_U_up = tilde_U(mc_n.Ham.U_up, mc_n.kappa_up)
+    log_det_up_n = logdet(tilde_U_up)
+
+    new_tilde_U_up = tilde_U_up[[1:l_up-1; l_up+1:end], setdiff(1:end, l_up)]
+
+    log_det_up_np1 = logdet(new_tilde_U_up)
+
+    log_det_ratio_up = log_det_up_np1 - log_det_up_n
+
+    # 2. Ratio for the down-spin sector (particle added)
+    new_row_down = mc_n.Ham.U_down_plus[site, :]
+    vec_down = mc_n.U_downinvs * new_row_down[1:N_down]
+    log_det_ratio_down = log(1 + new_row_down[N_down+1] - dot(new_row_down[1:N_down], vec_down))
+
+    return log_det_ratio_up + log_det_ratio_down
+end
+
+
+
+
 
 function measure_S_plus(mc::MCState, site::Int)
     if !is_occupied(mc.kappa_down, site)
         return 0.0 + 0.0im, 0.0 # return amplitude and amplitude squared
     end
 
-    mc_np1 = spin_plus_transition(mc, site)
-
-    log_ratio = get_log_det_ratio(mc, mc_np1)
+    log_ratio = calculate_log_det_ratio_spin_plus(mc, site)
 
     # Apply normalization to fix system-size dependence
     # The determinant ratio scales exponentially with system size
     # We normalize by the square root of the number of sites to get system-size independent amplitudes
+    ns = length(mc.kappa_up)  # total number of sites
+    normalized_log_ratio = log_ratio / sqrt(ns)
+
+    ratio = complex(exp(normalized_log_ratio))
+    return ratio, abs2(ratio)
+end
+
+function measure_S_minus(mc::MCState, site::Int)
+    if !is_occupied(mc.kappa_up, site)
+        return 0.0 + 0.0im, 0.0 # return amplitude and amplitude squared
+    end
+
+    log_ratio = calculate_log_det_ratio_spin_minus(mc, site)
+
+    # Apply normalization to fix system-size dependence
     ns = length(mc.kappa_up)  # total number of sites
     normalized_log_ratio = log_ratio / sqrt(ns)
 
@@ -366,6 +418,7 @@ function MCState(params::AbstractDict)
     return MCState(Ham, kappa_up, kappa_down, W_up, W_down)
 end
 
+
 """
     MCState(Ham, kappa_up, kappa_down, W_up, W_down)
 
@@ -398,8 +451,8 @@ function MCState(
     ns, N_up_W = size(W_up)
     _, N_down_W = size(W_down)
     @assert ns != 0
-    @assert N_up_W != 0
-    @assert N_down_W != 0
+    # @assert N_up_W != 0
+    # @assert N_down_W != 0
     @assert N_up_W == N_up
     @assert N_down_W == N_down
 
@@ -414,6 +467,10 @@ function MCState(
         zeros(eltype(W_up), N_up),     # W_up_row_cache
         zeros(eltype(W_down), ns),      # W_down_col_cache
         zeros(eltype(W_down), N_down),   # W_down_row_cache
+        0.0 + 0.0im, # log_det_cached
+        false, # log_det_valid
+        zeros(eltype(W_up), N_up, N_up), # U_upinvs
+        zeros(eltype(W_down), N_down, N_down), # U_downinvs
     )
 end
 
@@ -829,6 +886,16 @@ correlation between samples and improve measurement efficiency.
         end
         measure!(ctx, :S_plus_amp, s_plus_amp / ns)
         measure!(ctx, :S_plus_amp_sq, s_plus_amp_sq / ns)
+
+        s_minus_amp = 0.0 + 0.0im
+        s_minus_amp_sq = 0.0
+        for i = 1:ns
+            amp, amp_sq = measure_S_minus(mc, i)
+            s_minus_amp += amp
+            s_minus_amp_sq += amp_sq
+        end
+        measure!(ctx, :S_minus_amp, s_minus_amp / ns)
+        measure!(ctx, :S_minus_amp_sq, s_minus_amp_sq / ns)
     end
 end
 
@@ -887,6 +954,12 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
     end
     evaluate!(eval, :S_plus_amp_sq, (:S_plus_amp_sq,)) do S_plus_amp_sq
         S_plus_amp_sq
+    end
+    evaluate!(eval, :S_minus_amp, (:S_minus_amp,)) do S_minus_amp
+        S_minus_amp
+    end
+    evaluate!(eval, :S_minus_amp_sq, (:S_minus_amp_sq,)) do S_minus_amp_sq
+        S_minus_amp_sq
     end
 end
 

@@ -1,4 +1,4 @@
-using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!, spin_plus_transition, apply_operator, MC, measure_S_plus
+using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!, spin_plus_transition, apply_operator, MC, measure_S_plus, measure_S_minus, calculate_log_det_ratio_spin_plus, calculate_log_det_ratio_spin_minus
 using Random
 using Test
 using LinearAlgebra
@@ -503,10 +503,6 @@ end
         [0, 1, 0, 2],
         copy(W_up),
         copy(W_down),
-        Vector{ComplexF64}(undef, n),
-        Vector{ComplexF64}(undef, N_up),
-        Vector{ComplexF64}(undef, n),
-        Vector{ComplexF64}(undef, N_down),
     )
 
     @testset "flag = 1" begin
@@ -631,160 +627,6 @@ end
     end
 end
 
-@testset "get_log_det_ratio tests" begin
-    @testset "Basic functionality" begin
-        # Setup initial MC state with well-defined configuration
-        params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
-        mc_n = MC(params)
-        ctx = Carlo.MCContext{Random.Xoshiro}(
-            Dict(:binsize => 3, :seed => 123, :thermalization => 10),
-        )
-        Carlo.init!(mc_n, ctx, params)
-
-        # Set up a specific configuration for testing
-        mc_n.kappa_up = [1, 2, 3, 0, 0, 0]
-        mc_n.kappa_down = [0, 0, 0, 1, 2, 3]
-        KagomeDSL.reevaluateW!(mc_n)  # Ensure W matrices are consistent
-
-        # Site to flip (has a down spin)
-        site_to_flip = 4
-
-        # Perform transition to get n+1 state
-        mc_np1 = spin_plus_transition(mc_n, site_to_flip)
-
-        # Test the determinant ratio calculation
-        log_det_ratio = KagomeDSL.get_log_det_ratio(mc_n, mc_np1)
-
-        # The result should be a finite real number
-        @test isfinite(log_det_ratio)
-        @test isa(log_det_ratio, Real)
-    end
-
-    @testset "Manual calculation verification" begin
-        # Create a small system where we can manually verify the calculation
-        # Use 2×1 system with N_up=2, N_down=2
-        params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 2, :N_down => 2)
-        mc_n = MC(params)
-        ctx = Carlo.MCContext{Random.Xoshiro}(
-            Dict(:binsize => 3, :seed => 42, :thermalization => 10),
-        )
-        Carlo.init!(mc_n, ctx, params)
-
-        # Set specific configuration for reproducible test
-        mc_n.kappa_up = [1, 2, 0, 0, 0, 0]
-        mc_n.kappa_down = [0, 0, 1, 2, 0, 0]
-        KagomeDSL.reevaluateW!(mc_n)
-
-        # Flip site 3 (has down spin)
-        site_to_flip = 3
-        mc_np1 = spin_plus_transition(mc_n, site_to_flip)
-
-        # Calculate using our function
-        log_det_ratio = KagomeDSL.get_log_det_ratio(mc_n, mc_np1)
-
-        # Manual calculation for verification
-        tilde_U_up_n = tilde_U(mc_n.Ham.U_up, mc_n.kappa_up)
-        tilde_U_down_n = tilde_U(mc_n.Ham.U_down, mc_n.kappa_down)
-        log_det_n_manual = real(logdet(tilde_U_up_n)) + real(logdet(tilde_U_down_n))
-
-        tilde_U_up_np1 = tilde_U(mc_np1.Ham.U_up, mc_np1.kappa_up)
-        tilde_U_down_np1 = tilde_U(mc_np1.Ham.U_down, mc_np1.kappa_down)
-        log_det_np1_manual = real(logdet(tilde_U_up_np1)) + real(logdet(tilde_U_down_np1))
-
-        log_det_ratio_manual = log_det_np1_manual - log_det_n_manual
-
-        # They should be approximately equal
-        @test isapprox(log_det_ratio, log_det_ratio_manual, atol=1e-12)
-    end
-
-    @testset "Consistency with different configurations" begin
-        # Test multiple random configurations to ensure consistency
-        params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
-
-        for seed in [1, 42, 123, 456, 789]
-            mc_n = MC(params)
-            ctx = Carlo.MCContext{Random.Xoshiro}(
-                Dict(:binsize => 3, :seed => seed, :thermalization => 10),
-            )
-            Carlo.init!(mc_n, ctx, params)
-
-            # Find a site with down spin for flipping
-            down_sites = findall(i -> is_occupied(mc_n.kappa_down, i), 1:length(mc_n.kappa_down))
-            if !isempty(down_sites)
-                site_to_flip = down_sites[1]
-
-                mc_np1 = spin_plus_transition(mc_n, site_to_flip)
-                log_det_ratio = KagomeDSL.get_log_det_ratio(mc_n, mc_np1)
-
-                # Should always be finite
-                @test isfinite(log_det_ratio)
-                @test isa(log_det_ratio, Real)
-            end
-        end
-    end
-
-    @testset "Particle number conservation verification" begin
-        # Verify that the determinant ratio correctly accounts for particle number changes
-        params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
-        mc_n = MC(params)
-        ctx = Carlo.MCContext{Random.Xoshiro}(
-            Dict(:binsize => 3, :seed => 123, :thermalization => 10),
-        )
-        Carlo.init!(mc_n, ctx, params)
-
-        # Set specific configuration
-        mc_n.kappa_up = [1, 2, 3, 0, 0, 0]
-        mc_n.kappa_down = [0, 0, 0, 1, 2, 3]
-        KagomeDSL.reevaluateW!(mc_n)
-
-        site_to_flip = 4
-        mc_np1 = spin_plus_transition(mc_n, site_to_flip)
-
-        # Verify particle numbers changed correctly
-        @test count(!iszero, mc_n.kappa_up) == 3
-        @test count(!iszero, mc_n.kappa_down) == 3
-        @test count(!iszero, mc_np1.kappa_up) == 4
-        @test count(!iszero, mc_np1.kappa_down) == 2
-
-        # Verify determinant matrices have correct dimensions
-        tilde_U_up_n = tilde_U(mc_n.Ham.U_up, mc_n.kappa_up)
-        tilde_U_down_n = tilde_U(mc_n.Ham.U_down, mc_n.kappa_down)
-        tilde_U_up_np1 = tilde_U(mc_np1.Ham.U_up, mc_np1.kappa_up)
-        tilde_U_down_np1 = tilde_U(mc_np1.Ham.U_down, mc_np1.kappa_down)
-
-        @test size(tilde_U_up_n) == (3, 3)
-        @test size(tilde_U_down_n) == (3, 3)
-        @test size(tilde_U_up_np1) == (4, 4)
-        @test size(tilde_U_down_np1) == (2, 2)
-
-        # The function should handle these dimension changes correctly
-        log_det_ratio = KagomeDSL.get_log_det_ratio(mc_n, mc_np1)
-        @test isfinite(log_det_ratio)
-    end
-
-    @testset "Numerical stability" begin
-        # Test with configurations that might cause numerical issues
-        params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 2, :N_down => 4)
-        mc_n = MC(params)
-        ctx = Carlo.MCContext{Random.Xoshiro}(
-            Dict(:binsize => 3, :seed => 999, :thermalization => 10),
-        )
-        Carlo.init!(mc_n, ctx, params)
-
-        # Find valid flip site
-        down_sites = findall(i -> is_occupied(mc_n.kappa_down, i), 1:length(mc_n.kappa_down))
-        if !isempty(down_sites)
-            site_to_flip = down_sites[1]
-
-            mc_np1 = spin_plus_transition(mc_n, site_to_flip)
-            log_det_ratio = KagomeDSL.get_log_det_ratio(mc_n, mc_np1)
-
-            # Should not produce NaN or Inf
-            @test !isnan(log_det_ratio)
-            @test !isinf(log_det_ratio)
-        end
-    end
-end
 
 @testset "Checkpointing" begin
     param = Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 3, :N_down => 3)
@@ -817,4 +659,58 @@ end
 
     @test mc1.kappa_up == mc2.kappa_up
     @test mc1.kappa_down == mc2.kappa_down
+end
+
+@testset "measure_S_minus" begin
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+
+    mc.kappa_up = [1, 2, 3, 0, 0, 0]
+    mc.kappa_down = [0, 0, 0, 1, 2, 3]
+
+    site_to_flip = 1 # Has an up spin
+    amp, amp_sq = measure_S_minus(mc, site_to_flip)
+    @test amp isa Complex
+    @test amp_sq isa Real
+    @test amp_sq ≈ abs2(amp)
+
+    # Test invalid site
+    site_to_flip = 4 # Has a down spin
+    amp, amp_sq = measure_S_minus(mc, site_to_flip)
+    @test amp == 0.0
+    @test amp_sq == 0.0
+end
+
+@testset "calculate_log_det_ratio_spin_plus/minus" begin
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 2, :N_down => 2)
+        mc_n = MC(params)
+        ctx = Carlo.MCContext{Random.Xoshiro}(
+            Dict(:binsize => 3, :seed => 42, :thermalization => 10),
+        )
+        Carlo.init!(mc_n, ctx, params)
+
+        # Set specific configuration for reproducible test
+        mc_n.kappa_up = [1, 2, 0, 0, 0, 0]
+        mc_n.kappa_down = [0, 0, 1, 2, 0, 0]
+        KagomeDSL.reevaluateW!(mc_n)
+
+        # Flip site 3 (has down spin)
+        site_to_flip = 3
+        log_det_ratio_plus = calculate_log_det_ratio_spin_plus(mc_n, site_to_flip)
+
+        mc_np1 = spin_plus_transition(mc_n, site_to_flip)
+        log_det_ratio_manual = logdet(tilde_U(mc_np1.Ham.U_up,mc_np1.kappa_up)) + logdet(tilde_U(mc_np1.Ham.U_down,mc_np1.kappa_down)) - mc_n.log_det_cached
+        @test isapprox(log_det_ratio_plus, log_det_ratio_manual, atol=1e-12)
+
+        # Flip site 1 (has up spin)
+        site_to_flip = 1
+        log_det_ratio_minus = calculate_log_det_ratio_spin_minus(mc_n, site_to_flip)
+
+        mc_nm1 = KagomeDSL.spin_minus_transition(mc_n, site_to_flip)
+        log_det_ratio_manual = logdet(tilde_U(mc_nm1.Ham.U_up,mc_nm1.kappa_up)) + logdet(tilde_U(mc_nm1.Ham.U_down,mc_nm1.kappa_down)) - mc_n.log_det_cached
+        @test isapprox(log_det_ratio_minus, log_det_ratio_manual, atol=1e-12)
 end

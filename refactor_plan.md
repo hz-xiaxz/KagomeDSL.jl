@@ -198,10 +198,25 @@ This section summarizes the progress made in implementing the refactoring plan a
     -   A measurement protocol for the off-diagonal `S+` operator has been implemented via the `measure_S_plus` function.
     -   The new measurement has been integrated into the main Monte Carlo loop in `Carlo.measure!`.
 
-### 5.2. Remaining Issues and Future Work
+### 6. Unresolved Issue: Efficient Determinant Ratio Calculation
+
+While the refactoring to support off-diagonal operators is largely complete, the efficient calculation of the determinant ratio for particle number-changing moves remains an unresolved issue. The current implementation falls back to a full determinant calculation for the particle removal part of the move, which is not performant.
+
+### 6.1. The Problem
+
+The attempt to use a simple rank-1 downdate formula for particle removal proved to be incorrect. The core of the issue lies in the fact that removing a particle corresponds to removing both a row and a column from the `tilde_U` matrix. The simple Sherman-Morrison formula for rank-1 updates does not apply in this case. The correct formula is likely the Sherman-Morrison-Woodbury identity, which is more complex to implement correctly.
+
+### 6.2. Failed Attempts
+
+Several attempts were made to implement an efficient calculation, including:
+
+1.  **Incorrect sign in the rank-1 update formula:** This was an initial error that was corrected, but did not resolve the issue.
+2.  **Incorrectly constructing the smaller matrix:** Attempts to manually construct the smaller matrix for the determinant calculation after particle removal failed due to dimension mismatches.
+3.  **Comparing real vs. complex log-determinants:** The tests were updated to compare the full complex log-determinant ratios, but this did not resolve the underlying issue.
+
+### 6.3. Recommendation
+
+It is recommended that a developer with expertise in linear algebra and quantum Monte Carlo methods review the `calculate_log_det_ratio_spin_plus` and `calculate_log_det_ratio_spin_minus` functions in `src/MonteCarlo.jl` and implement a correct and efficient solution for the rank-1 downdate of the determinant. The current implementation, while correct, is a placeholder and should be replaced.
 
 -   **Efficient Determinant Ratio Calculation:** The current implementation of `get_log_det_ratio` is inefficient as it recalculates the full determinants of the `tilde_U` matrices. A more efficient approach using rank-1 updates to the determinant should be implemented to improve performance. This will likely involve storing and updating the log-determinant in the `MCState` object.
 -   **Typed Transition Objects:** The plan suggested defining "typed transition objects" to manage moves between sectors. This has not been implemented yet. While the current approach with `spin_plus_transition` is functional, a more formal system of transition objects could improve the extensibility of the code for other types of operators.
--   **General Off-Diagonal Measurements:** The current framework only supports `S+`. It should be extended to support other off-diagonal operators like `S-` and pair creation/annihilation operators.
--   **Testing of `getxprime`:** The test for `getxprime` uses an unphysical state. While it tests the function's logic, it would be beneficial to have a test that uses a physically valid state to ensure correctness in a realistic scenario.
--   **MKL Integration:** Ensure that MKL is being used effectively for all performance-critical linear algebra operations.

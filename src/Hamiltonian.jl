@@ -583,11 +583,10 @@ spinon per site: n_{i↑} + n_{i↓} = 1 (no double occupancy or empty sites).
 - The spinon constraint is fundamental to the validity of the spin liquid state
 
 # Performance Notes
-- Marked @inline for performance in Monte Carlo loops
 - Uses @boundscheck for optional bounds checking
 - Calls is_occupied() helper function for spinon occupancy detection
 """
-@inline function Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+function Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     # Bounds check
     n = length(kappa_up)
     @boundscheck begin
@@ -699,10 +698,10 @@ function spinInteraction!(
     i::Int,
     j::Int,
 )
-    i_up = @inbounds kappa_up[i]
-    j_up = @inbounds kappa_up[j]
-    i_down = @inbounds kappa_down[i]
-    j_down = @inbounds kappa_down[j]
+    i_up = kappa_up[i]
+    j_up = kappa_up[j]
+    i_down = kappa_down[i]
+    j_down = kappa_down[j]
     # Case 1: S+_i S-_j
     # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
     if j_up != 0 && i_down != 0
@@ -771,7 +770,7 @@ The result is H|κ⟩ = Σ_κ' xprime[κ'] |κ'⟩, where xprime encodes the exp
     nn = Ham.nn
     xprime = Dict{NTuple{4,Int},Float64}()
     # just scan through all the bonds
-    @inbounds for bond in nn
+    for bond in nn
         spinInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
         SzInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
     end
