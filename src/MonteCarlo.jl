@@ -77,8 +77,8 @@ function reevaluateW!(mc::MCState)
     # Calculate inverse matrices
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-    mc.U_upinvs = inv(tilde_U_up)
-    mc.U_downinvs = inv(tilde_U_down)
+    mc.U_upinvs = tilde_U_up \ I
+    mc.U_downinvs = tilde_U_down \ I
     # Calculate W matrices using matrix multiplication
     mc.W_up = mc.Ham.U_up * mc.U_upinvs
     mc.W_down = mc.Ham.U_down * mc.U_downinvs
@@ -479,20 +479,16 @@ function init_conf_qr!(mc::MCState, ns::Int, N_up::Int, N_down::Int)
     end
 
     # For kappa_down
-    if N_down > 0
-        available_sites = setdiff(1:ns, sites_up)
-        U_down_subset = mc.Ham.U_down[collect(available_sites), :]
+    available_sites = setdiff(1:ns, sites_up)
+    U_down_subset = mc.Ham.U_down[collect(available_sites), :]
 
-        F_down = qr(U_down_subset', ColumnNorm())
-        sites_down_indices = F_down.p[1:N_down]
-        sites_down = collect(available_sites)[sites_down_indices]
+    F_down = qr(U_down_subset', ColumnNorm())
+    sites_down_indices = F_down.p[1:N_down]
+    sites_down = collect(available_sites)[sites_down_indices]
 
-        mc.kappa_down = zeros(Int, ns)
-        for (i, site) in enumerate(sites_down)
-            mc.kappa_down[site] = i
-        end
-    else
-        mc.kappa_down = zeros(Int, ns)
+    mc.kappa_down = zeros(Int, ns)
+    for (i, site) in enumerate(sites_down)
+        mc.kappa_down[site] = i
     end
 
     return nothing
@@ -525,19 +521,15 @@ function find_initial_configuration!(mc::MCState, ns::Int, N_up::Int, N_down::In
     init_conf_qr!(mc, ns, N_up, N_down)
 
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
-    if N_down > 0
-        tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-    end
+    tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
 
     try
         U_upinvs = tilde_U_up \ I
         mc.W_up = mc.Ham.U_up * U_upinvs
 
-        if N_down > 0
-            tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-            U_downinvs = tilde_U_down \ I
-            mc.W_down = mc.Ham.U_down * U_downinvs
-        end
+        tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
+        U_downinvs = tilde_U_down \ I
+        mc.W_down = mc.Ham.U_down * U_downinvs
         return # Success
     catch e
         if e isa SingularException || e isa LinearAlgebra.LAPACKException
