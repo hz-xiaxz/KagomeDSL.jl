@@ -877,24 +877,25 @@ correlation between samples and improve measurement efficiency.
 
         # New measurement
         ns = length(mc.kappa_up)
-        s_plus_amp = 0.0 + 0.0im
+        # TEMPORARILY DISABLED: Complex observables cause JSON serialization error
+        # s_plus_amp = 0.0 + 0.0im
         s_plus_amp_sq = 0.0
         for i = 1:ns
             amp, amp_sq = measure_S_plus(mc, i)
-            s_plus_amp += amp
+            # s_plus_amp += amp
             s_plus_amp_sq += amp_sq
         end
-        measure!(ctx, :S_plus_amp, s_plus_amp / ns)
+        # measure!(ctx, :S_plus_amp, s_plus_amp / ns)
         measure!(ctx, :S_plus_amp_sq, s_plus_amp_sq / ns)
 
-        s_minus_amp = 0.0 + 0.0im
+        # s_minus_amp = 0.0 + 0.0im
         s_minus_amp_sq = 0.0
         for i = 1:ns
             amp, amp_sq = measure_S_minus(mc, i)
-            s_minus_amp += amp
+            # s_minus_amp += amp
             s_minus_amp_sq += amp_sq
         end
-        measure!(ctx, :S_minus_amp, s_minus_amp / ns)
+        # measure!(ctx, :S_minus_amp, s_minus_amp / ns)
         measure!(ctx, :S_minus_amp_sq, s_minus_amp_sq / ns)
     end
 end
@@ -949,15 +950,16 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
     evaluate!(eval, :energy, (:OL,)) do OL
         OL / ns
     end
-    evaluate!(eval, :S_plus_amp, (:S_plus_amp,)) do S_plus_amp
-        S_plus_amp
-    end
+    # TEMPORARILY DISABLED: Complex observables cause JSON serialization error
+    # evaluate!(eval, :S_plus_amp, (:S_plus_amp,)) do S_plus_amp
+    #     S_plus_amp
+    # end
     evaluate!(eval, :S_plus_amp_sq, (:S_plus_amp_sq,)) do S_plus_amp_sq
         S_plus_amp_sq
     end
-    evaluate!(eval, :S_minus_amp, (:S_minus_amp,)) do S_minus_amp
-        S_minus_amp
-    end
+    # evaluate!(eval, :S_minus_amp, (:S_minus_amp,)) do S_minus_amp
+    #     S_minus_amp
+    # end
     evaluate!(eval, :S_minus_amp_sq, (:S_minus_amp_sq,)) do S_minus_amp_sq
         S_minus_amp_sq
     end
