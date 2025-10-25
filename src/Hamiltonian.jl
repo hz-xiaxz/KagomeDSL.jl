@@ -424,8 +424,6 @@ struct Hamiltonian{N_up,N_down}
     nn::AbstractArray
     U_up_plus::Matrix{ComplexF64}     # For S+ transitions: N_up -> N_up+1
     U_down_minus::Matrix{ComplexF64}  # For S+ transitions: N_down -> N_down-1
-    U_up_minus::Matrix{ComplexF64}    # For S- transitions: N_up -> N_up-1
-    U_down_plus::Matrix{ComplexF64}   # For S- transitions: N_down -> N_down+1
 end
 
 """    
@@ -462,10 +460,6 @@ end
 abstract type AbstractOperator end
 
 struct SpinPlusOperator{N_up,N_down} <: AbstractOperator
-    site::Int
-end
-
-struct SpinMinusOperator{N_up,N_down} <: AbstractOperator
     site::Int
 end
 
@@ -525,29 +519,15 @@ function Hamiltonian(
     H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
 
+    @assert N_down >= 0 "N_down must be non-negative, got: $N_down"
+    @assert N_up >= 0 "N_up must be non-negative, got: $N_up"
+
     ns = size(H_mat, 1)
-    # Pre-compute orbitals for neighboring sectors needed for S+ and S- transitions
-
-    # For S+ transitions: N_up -> N_up+1, N_down -> N_down-1
-    if N_down > 0
-        U_up_plus, U_down_minus = orbitals(H_mat, N_up + 1, N_down - 1)
-    else
-        # If N_down = 0, we can't have S+ transitions (no down spins to flip)
-        U_up_plus = zeros(ComplexF64, ns, N_up + 1)
-        U_down_minus = zeros(ComplexF64, ns, 0)  # N_down - 1 = -1, invalid
-    end
-
-    # For S- transitions: N_up -> N_up-1, N_down -> N_down+1
-    if N_up > 0
-        U_up_minus, U_down_plus = orbitals(H_mat, N_up - 1, N_down + 1)
-    else
-        # If N_up = 0, we can't have S- transitions (no up spins to flip)
-        U_up_minus = zeros(ComplexF64, ns, 0)  # N_up - 1 = -1, invalid
-        U_down_plus = zeros(ComplexF64, ns, N_down + 1)
-    end
+    # Pre-compute orbitals for neighboring sectors needed for S+ transitions
+    U_up_plus, U_down_minus = orbitals(H_mat, N_up + 1, N_down - 1)
 
     nn = get_nn(H_mat)
-    return Hamiltonian{N_up,N_down}(U_up, U_down, H_mat, nn, U_up_plus, U_down_minus, U_up_minus, U_down_plus)
+    return Hamiltonian{N_up,N_down}(U_up, U_down, H_mat, nn, U_up_plus, U_down_minus)
 end
 
 

@@ -182,8 +182,6 @@ function spin_plus_transition(mc_n::MCState{N_up,N_down}, site::Int) where {N_up
         # For now, we'll leave them empty since they're not needed immediately.
         zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_up + 1),
         zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_down - 1)),
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_up - 1)),
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_down + 1),
     )
 
     # Create the new MCState. W matrices are zero-initialized.
@@ -208,66 +206,10 @@ function apply_operator(
     return spin_plus_transition(state, op.site)
 end
 
-function spin_minus_transition(mc_n::MCState{N_up,N_down}, site::Int) where {N_up,N_down}
-    # 1. Check for an up spin at the site
-    if !is_occupied(mc_n.kappa_up, site)
-        throw(ArgumentError("No up spin to flip at site $site"))
-    end
-
-    # 2. Create new kappa vectors
-    new_kappa_up = copy(mc_n.kappa_up)
-    new_kappa_down = copy(mc_n.kappa_down)
-
-    # 3. Apply spin flip: site 'site' loses an up spin and gains a down spin
-    # The new down spin gets the (N_down + 1)-th orbital
-    new_kappa_down[site] = N_down + 1 # Assign the new orbital index
-    new_kappa_up[site] = 0
-
-    # 4. Relabel
-    relabel_configuration!(new_kappa_up)
-    relabel_configuration!(new_kappa_down)
-
-    # 5. Create new Hamiltonian and MCState
-    new_N_up = N_up - 1
-    new_N_down = N_down + 1
-
-    new_ham = Hamiltonian{new_N_up,new_N_down}(
-        mc_n.Ham.U_up_minus,
-        mc_n.Ham.U_down_plus,
-        mc_n.Ham.H_mat,
-        mc_n.Ham.nn,
-        # For the new U_up_plus and U_down_minus, we would need orbitals for
-        # (N_up, N_down) and (N_up-2, N_down+2) sectors respectively.
-        # For now, we'll leave them empty since they're not needed immediately.
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_up + 1),
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_down - 1)),
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), max(0, new_N_up - 1)),
-        zeros(ComplexF64, size(mc_n.Ham.H_mat, 1), new_N_down + 1),
-    )
-
-    # Create the new MCState. W matrices are zero-initialized.
-    new_mc = MCState(
-        new_ham,
-        new_kappa_up,
-        new_kappa_down,
-        zeros(eltype(new_ham.U_up), size(new_ham.U_up, 1), new_N_up),
-        zeros(eltype(new_ham.U_down), size(new_ham.U_down, 1), new_N_down),
-    )
-
-    # The W matrices need to be calculated.
-    reevaluateW!(new_mc)
-
-    return new_mc
-end
-
-function apply_operator(
-    op::SpinMinusOperator{N_up,N_down},
-    state::MCState{N_up,N_down},
+function calculate_log_det_ratio_spin_plus(
+    mc_n::MCState{N_up,N_down},
+    site::Int,
 ) where {N_up,N_down}
-    return spin_minus_transition(state, op.site)
-end
-
-function calculate_log_det_ratio_spin_plus(mc_n::MCState{N_up, N_down}, site::Int) where {N_up, N_down}
     # Efficiently calculate the log determinant ratio for a S+ move at a given site.
 
     # 1. Ratio for the down-spin sector (particle removed)
@@ -289,31 +231,6 @@ function calculate_log_det_ratio_spin_plus(mc_n::MCState{N_up, N_down}, site::In
     return log_det_ratio_up + log_det_ratio_down
 end
 
-function calculate_log_det_ratio_spin_minus(mc_n::MCState{N_up, N_down}, site::Int) where {N_up, N_down}
-    # Efficiently calculate the log determinant ratio for a S- move at a given site.
-
-    # 1. Ratio for the up-spin sector (particle removed)
-    l_up = mc_n.kappa_up[site]
-    tilde_U_up = tilde_U(mc_n.Ham.U_up, mc_n.kappa_up)
-    log_det_up_n = logdet(tilde_U_up)
-
-    new_tilde_U_up = tilde_U_up[[1:l_up-1; l_up+1:end], setdiff(1:end, l_up)]
-
-    log_det_up_np1 = logdet(new_tilde_U_up)
-
-    log_det_ratio_up = log_det_up_np1 - log_det_up_n
-
-    # 2. Ratio for the down-spin sector (particle added)
-    new_row_down = mc_n.Ham.U_down_plus[site, :]
-    vec_down = mc_n.U_downinvs * new_row_down[1:N_down]
-    log_det_ratio_down = log(1 + new_row_down[N_down+1] - dot(new_row_down[1:N_down], vec_down))
-
-    return log_det_ratio_up + log_det_ratio_down
-end
-
-
-
-
 
 function measure_S_plus(mc::MCState, site::Int)
     if !is_occupied(mc.kappa_down, site)
@@ -325,21 +242,6 @@ function measure_S_plus(mc::MCState, site::Int)
     # Apply normalization to fix system-size dependence
     # The determinant ratio scales exponentially with system size
     # We normalize by the square root of the number of sites to get system-size independent amplitudes
-    ns = length(mc.kappa_up)  # total number of sites
-    normalized_log_ratio = log_ratio / sqrt(ns)
-
-    ratio = complex(exp(normalized_log_ratio))
-    return ratio, abs2(ratio)
-end
-
-function measure_S_minus(mc::MCState, site::Int)
-    if !is_occupied(mc.kappa_up, site)
-        return 0.0 + 0.0im, 0.0 # return amplitude and amplitude squared
-    end
-
-    log_ratio = calculate_log_det_ratio_spin_minus(mc, site)
-
-    # Apply normalization to fix system-size dependence
     ns = length(mc.kappa_up)  # total number of sites
     normalized_log_ratio = log_ratio / sqrt(ns)
 
@@ -875,28 +777,14 @@ correlation between samples and improve measurement efficiency.
         OL = getOL(mc, mc.kappa_up, mc.kappa_down)
         measure!(ctx, :OL, OL)
 
-        # New measurement
+        # S+ measurement
         ns = length(mc.kappa_up)
-        # TEMPORARILY DISABLED: Complex observables cause JSON serialization error
-        # s_plus_amp = 0.0 + 0.0im
         s_plus_amp_sq = 0.0
         for i = 1:ns
             amp, amp_sq = measure_S_plus(mc, i)
-            # s_plus_amp += amp
             s_plus_amp_sq += amp_sq
         end
-        # measure!(ctx, :S_plus_amp, s_plus_amp / ns)
         measure!(ctx, :S_plus_amp_sq, s_plus_amp_sq / ns)
-
-        # s_minus_amp = 0.0 + 0.0im
-        s_minus_amp_sq = 0.0
-        for i = 1:ns
-            amp, amp_sq = measure_S_minus(mc, i)
-            # s_minus_amp += amp
-            s_minus_amp_sq += amp_sq
-        end
-        # measure!(ctx, :S_minus_amp, s_minus_amp / ns)
-        measure!(ctx, :S_minus_amp_sq, s_minus_amp_sq / ns)
     end
 end
 
@@ -950,18 +838,8 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
     evaluate!(eval, :energy, (:OL,)) do OL
         OL / ns
     end
-    # TEMPORARILY DISABLED: Complex observables cause JSON serialization error
-    # evaluate!(eval, :S_plus_amp, (:S_plus_amp,)) do S_plus_amp
-    #     S_plus_amp
-    # end
     evaluate!(eval, :S_plus_amp_sq, (:S_plus_amp_sq,)) do S_plus_amp_sq
         S_plus_amp_sq
-    end
-    # evaluate!(eval, :S_minus_amp, (:S_minus_amp,)) do S_minus_amp
-    #     S_minus_amp
-    # end
-    evaluate!(eval, :S_minus_amp_sq, (:S_minus_amp_sq,)) do S_minus_amp_sq
-        S_minus_amp_sq
     end
 end
 
