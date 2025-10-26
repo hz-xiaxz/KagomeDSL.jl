@@ -746,7 +746,7 @@ The result is H|κ⟩ = Σ_κ' xprime[κ'] |κ'⟩, where xprime encodes the exp
 - The Hamiltonian H is the original Heisenberg model, not the mean-field one
 - Combines both diagonal (Ising) and off-diagonal (transverse) contributions
 """
-@inline function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     nn = Ham.nn
     xprime = Dict{NTuple{4,Int},Float64}()
     # just scan through all the bonds

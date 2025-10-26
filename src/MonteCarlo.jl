@@ -129,7 +129,7 @@ function tilde_U(U::AbstractMatrix, kappa::Vector{Int})
     # Create output matrix with same element type as U and requested size
     tilde_U = zeros(eltype(U), m, m)
 
-    @inbounds for (Rl, l) in enumerate(kappa)
+    for (Rl, l) in enumerate(kappa)
         if l != 0
             (1 ≤ l ≤ m) || throw(BoundsError(tilde_U, (l, :)))
             tilde_U[l, :] = U[Rl, :]
@@ -265,9 +265,9 @@ Check if site `l` is occupied in the configuration vector.
 # Throws
 - `BoundsError`: if l is outside the valid range [1, length(kappa)]
 """
-@inline function is_occupied(kappa::Vector{Int}, l::Int)
+function is_occupied(kappa::Vector{Int}, l::Int)
     @boundscheck 1 ≤ l ≤ length(kappa) || throw(BoundsError(kappa, l))
-    @inbounds return kappa[l] != 0
+    return kappa[l] != 0
 end
 
 """
@@ -565,7 +565,7 @@ non-singular configuration using QR-based initialization.
 This function integrates with the Carlo.jl framework and is called automatically
 during simulation initialization to prepare the Monte Carlo state.
 """
-@inline function Carlo.init!(mc::MCState, ctx::MCContext, params::AbstractDict)
+function Carlo.init!(mc::MCState, ctx::MCContext, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
     ns = n1 * n2 * 3
@@ -595,7 +595,7 @@ function Z(nn::AbstractArray, kappa_up::AbstractVector, kappa_down::AbstractVect
     # iterate over all possible moves
     # if two sites connected by a bond, check if they are occupied by different spins
     count = 0
-    @inbounds for bond in nn
+    for bond in nn
         site1 = bond[1]
         site2 = bond[2]
         if kappa_up[site1] != 0 && kappa_down[site2] != 0
@@ -674,7 +674,7 @@ The W matrices are re-evaluated periodically (every n_occupied sweeps) to
 override numerical instability from repeated rank-1 updates. If re-evaluation
 fails due to singular matrices, a warning is issued and simulation continues.
 """
-@inline function Carlo.sweep!(mc::MCState, ctx::MCContext)
+function Carlo.sweep!(mc::MCState, ctx::MCContext)
     # MCMC scheme for Mott state
     # Electrons swap between different spins at occupied sites
     nn = mc.Ham.nn
@@ -745,7 +745,7 @@ fails due to singular matrices, a warning is issued and simulation continues.
 end
 
 """
-    @inline function Carlo.measure!(mc::MCState, ctx::MCContext)
+    function Carlo.measure!(mc::MCState, ctx::MCContext)
 
 Measures observables during the simulation and collects data.
 
@@ -763,7 +763,7 @@ physical observables like local energy and collect them for postprocessing.
 Measurements are taken periodically (every n_occupied sweeps) to reduce
 correlation between samples and improve measurement efficiency.
 """
-@inline function Carlo.measure!(mc::MCState, ctx::MCContext)
+function Carlo.measure!(mc::MCState, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
     if ctx.sweeps % n_occupied == 0
         OL = getOL(mc, mc.kappa_up, mc.kappa_down)
@@ -819,7 +819,7 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
 - Actual evaluation happens in postprocessing phase
 - Minimal computational overhead during Monte Carlo sampling
 """
-@inline function Carlo.register_evaluables(
+function Carlo.register_evaluables(
     ::Type{<:MCState},
     eval::Evaluator,
     params::AbstractDict,
@@ -861,7 +861,7 @@ use in simulation continuation or postprocessing workflows.
 - Essential for resuming interrupted simulations
 - Enables analysis of specific configurations post-simulation
 """
-@inline function Carlo.write_checkpoint(mc::MCState, out::HDF5.Group)
+function Carlo.write_checkpoint(mc::MCState, out::HDF5.Group)
     out["kappa_up"] = mc.kappa_up
     out["kappa_down"] = mc.kappa_down
     return nothing
@@ -897,7 +897,7 @@ from a specific state or initialize postprocessing analysis.
 - Essential for maintaining simulation continuity
 - Enables reproducible analysis workflows
 """
-@inline function Carlo.read_checkpoint!(mc::MCState, in::HDF5.Group)
+function Carlo.read_checkpoint!(mc::MCState, in::HDF5.Group)
     mc.kappa_up = read(in, "kappa_up")
     mc.kappa_down = read(in, "kappa_down")
     return nothing
@@ -940,16 +940,15 @@ The ratio gives the local contribution to the energy from configuration |x⟩.
 
 # Performance Notes
 - Critical function called in every Monte Carlo step
-- Bounds checking disabled with @inbounds for performance
 - Uses efficient iteration over pairs() for dictionary access
 """
-@inline function getOL(mc::MCState, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+function getOL(mc::MCState, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
     # if double occupied state, no possibility to have a non-zero overlap
 
     OL = 0.0
     xprime = getxprime(mc.Ham, kappa_up, kappa_down)
-    @inbounds for (conf, coff) in pairs(xprime)
+    for (conf, coff) in pairs(xprime)
         if conf == (-1, -1, -1, -1)
             OL += coff
         else

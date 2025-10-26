@@ -51,7 +51,7 @@ end
 ### 2. **Performance Optimization**
 ```julia
 # Specialized methods for each particle number
-@inline function update_W!(mc::MCState{N}, args...) where {N}
+function update_W!(mc::MCState{N}, args...) where {N}
     # Compiler can optimize for specific N
 end
 ```

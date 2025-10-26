@@ -63,7 +63,7 @@ end
     ```
     *   **Performance Optimization**: The compiler can generate specialized methods for each particle number.
         ```julia
-        @inline function update_W!(mc::MCState{N_up, N_down}, args...) where {N_up, N_down}
+        function update_W!(mc::MCState{N_up, N_down}, args...) where {N_up, N_down}
             # Compiler can optimize for specific N_up and N_down
         end
         ```
