@@ -1,4 +1,5 @@
 using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!, spin_plus_transition, apply_operator, MC, measure_S_plus, calculate_log_det_ratio_spin_plus
+using KagomeDSL
 using Random
 using Test
 using LinearAlgebra
@@ -27,6 +28,56 @@ end
     kappa = [1, 0, 0]
     relabel_configuration!(kappa)
     @test kappa == [1, 0, 0]
+
+    # Test case for S+ transition: after removing orbital 2 from [1,0,2,3]
+    # we get [1,0,0,3], which should relabel to [1,0,0,2]
+    kappa = [1, 0, 0, 3]
+    relabel_configuration!(kappa)
+    @test kappa == [1, 0, 0, 2]
+end
+
+@testset "update_configurations! preserves orbital labels" begin
+    # Test that update_configurations! does NOT relabel during regular MC moves
+    # Setup: particles at sites with specific orbital labels
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+    KagomeDSL.reevaluateW!(mc)
+
+    # Set specific configuration to test preservation
+    mc.kappa_up = [2, 0, 1, 0, 3, 0]    # Sites 1,3,5 have orbitals 2,1,3
+    mc.kappa_down = [0, 2, 0, 1, 0, 3]  # Sites 2,4,6 have orbitals 2,1,3
+    KagomeDSL.reevaluateW!(mc)
+
+    # Perform update: swap up-spin from site 1 to site 2, down-spin from site 2 to site 1
+    # flag=1 means: up moves from i to site, down moves from site to i
+    flag = 1
+    i = 1
+    site = 2
+    l_up = mc.kappa_up[i]   # = 2
+    l_down = mc.kappa_down[site]  # = 2
+
+    # Save original labels
+    original_l_up = l_up
+    original_l_down = l_down
+
+    update_configurations!(mc, flag, i, site, l_up, l_down)
+
+    # After update: site 2 should have up-spin with orbital 2, site 1 should have down-spin with orbital 2
+    # The orbital labels should be PRESERVED (not relabeled)
+    @test mc.kappa_up[site] == original_l_up  # Should still be 2, not relabeled to 1
+    @test mc.kappa_down[i] == original_l_down  # Should still be 2, not relabeled
+    @test mc.kappa_up[i] == 0
+    @test mc.kappa_down[site] == 0
+
+    # Verify that non-participating particles kept their labels
+    @test mc.kappa_up[3] == 1  # Should still be 1
+    @test mc.kappa_up[5] == 3  # Should still be 3
+    @test mc.kappa_down[4] == 1  # Should still be 1
+    @test mc.kappa_down[6] == 3  # Should still be 3
 end
 
 @testset "spin_plus_transition" begin

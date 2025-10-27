@@ -164,8 +164,8 @@ function spin_plus_transition(mc_n::MCState{N_up,N_down}, site::Int) where {N_up
     new_kappa_up[site] = N_up + 1 # Assign the new orbital index
     new_kappa_down[site] = 0
 
-    # 4. Relabel
-    relabel_configuration!(new_kappa_up)
+    # 4. Relabel only down-spin (particle removed, needs consecutive labels)
+    # Up-spin does NOT need relabeling (particle added to (N_up+1)-th orbital)
     relabel_configuration!(new_kappa_down)
 
     # 5. Create new Hamiltonian and MCState
@@ -642,11 +642,7 @@ function update_configurations!(mc, flag::Int, i::Int, site::Int, l_up::Int, l_d
         mc.kappa_up[i], mc.kappa_up[site] = l_up, 0
         mc.kappa_down[i], mc.kappa_down[site] = 0, l_down
     end
-
-    # --- ADDED: Ensure kappa vectors are always canonical ---
-    relabel_configuration!(mc.kappa_up)
-    relabel_configuration!(mc.kappa_down)
-    # -------------------------------------------------------
+    # NOTE: No relabeling needed for same-sector moves (particle number unchanged)
 end
 
 """
