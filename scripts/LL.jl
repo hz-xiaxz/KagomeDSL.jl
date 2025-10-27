@@ -17,7 +17,7 @@ ns = tm.n1 * tm.n2 * 3
 tm.PBC = (true, true)
 tm.antiPBC = (false, true)
 tm.lattice = DoubleKagome
-imbalances = [0, 2, 4, 8, 10, 14]
+imbalances = [0, 8, 16, 32, 40, 56]
 for imbalance in imbalances
     S = tm.n1 * tm.n2 * 2√3
     tm.B = imbalance * π / S
