@@ -384,7 +384,6 @@ function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
     # get sampling ensemble U_up and U_down
     F = eigen(Hermitian(H_mat))
     p = sortperm(F.values)
-    evalues = F.values[p]
     evecs = F.vectors[:, p]
     # select N lowest eigenvectors as the sampling ensemble
     U_up = evecs[:, 1:N_up]
@@ -522,7 +521,6 @@ function Hamiltonian(
     @assert N_down >= 0 "N_down must be non-negative, got: $N_down"
     @assert N_up >= 0 "N_up must be non-negative, got: $N_up"
 
-    ns = size(H_mat, 1)
     # Pre-compute orbitals for neighboring sectors needed for S+ transitions
     U_up_plus, U_down_minus = orbitals(H_mat, N_up + 1, N_down - 1)
 
