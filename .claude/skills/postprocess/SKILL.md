@@ -44,6 +44,11 @@ All save to `/home/hzxiaxz/.julia/dev/KagomeDSL/data/`:
 |----------|---------|----------------|
 | `analyze_results.jl` | Load and inspect results | `data_file` (e.g., "LL-8x8.results.json") |
 
+**Note:** Analysis scripts require visualization dependencies. First-time setup:
+```bash
+julia --project=.claude/skills/postprocess -e 'using Pkg; Pkg.instantiate()'
+```
+
 ## Claude Workflow
 
 ### When User Requests Simulation
@@ -86,8 +91,8 @@ cp .claude/skills/postprocess/scripts/analyze_results.jl scratch/analyze_LL_8x8.
 #    - data_file = "LL-8x8.results.json"
 #    - Add custom plotting code for energy vs imbalance
 
-# 3. Run:
-julia --project scratch/analyze_LL_8x8.jl
+# 3. Run with skill's environment:
+julia --project=.claude/skills/postprocess scratch/analyze_LL_8x8.jl
 
 # 4. Figures saved to figures/
 ```
@@ -96,7 +101,8 @@ julia --project scratch/analyze_LL_8x8.jl
 1. Copy analyze_results.jl to `scratch/` with descriptive name
 2. Edit `data_file` parameter in scratch copy
 3. Add custom analysis/plotting code if requested
-4. Run and check output in `figures/`
+4. Run with `--project=.claude/skills/postprocess` to load CairoMakie
+5. Check output in `figures/`
 
 ## Standard Analysis Patterns
 
@@ -205,7 +211,7 @@ julia --project scratch/my_sim.jl run -r
 # Copy template to scratch/
 cp .claude/skills/postprocess/scripts/analyze_results.jl scratch/my_analysis.jl
 # Edit scratch/my_analysis.jl (data_file)
-julia --project scratch/my_analysis.jl
+julia --project=.claude/skills/postprocess scratch/my_analysis.jl
 ```
 
 **Check what's in a results file:**
