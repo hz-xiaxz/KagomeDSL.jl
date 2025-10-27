@@ -756,4 +756,3 @@ function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{I
     end
     return xprime
 end
-
