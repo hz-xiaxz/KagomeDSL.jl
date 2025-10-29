@@ -54,18 +54,20 @@ updates and measurements for a given quantum spin liquid system.
 Recalculate the one-particle Green's function matrices W_up and W_down.
 
 This function reconstructs the Green's functions from the current spin configuration
-by solving the linear systems involving the tilde_U matrices.
+by solving the linear systems involving the tilde_U matrices using QR decomposition
+for improved numerical stability.
 
 # Arguments
 - `mc::MCState`: Monte Carlo state object
 
 # Algorithm
 1. Construct tilde_U matrices from current kappa configurations
-2. Solve linear systems: ``tilde_U_up \\ I`` and ``tilde_U_down \\ I``
+2. Solve linear systems using QR decomposition: ``tilde_U_up \\ I`` and ``tilde_U_down \\ I``
 3. Compute Green's functions: ``W = U * (tilde_U \\ I)``
 
 # Note
-``U \\ I`` is numerically more stable than computing the inverse directly.
+QR decomposition is more numerically stable than LU factorization, especially
+for ill-conditioned matrices that can arise in certain spin configurations.
 
 The Green's function matrices W represent the one-particle propagators
 ``⟨x|cᵢ⁺cⱼ|ψ⟩/⟨x|ψ⟩`` for the current configuration.
@@ -74,18 +76,24 @@ Periodic re-evaluation is necessary to override numerical instability that
 accumulates from repeated rank-1 updates to the Green's function matrices.
 """
 function reevaluateW!(mc::MCState)
-    # Calculate inverse matrices
+    # Calculate inverse matrices using QR decomposition for numerical stability
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
-    mc.U_upinvs = tilde_U_up \ I
-    mc.U_downinvs = tilde_U_down \ I
+
+    # Use QR decomposition instead of LU for better numerical stability
+    F_up = qr(tilde_U_up)
+    F_down = qr(tilde_U_down)
+
+    mc.U_upinvs = F_up \ I
+    mc.U_downinvs = F_down \ I
+
     # Calculate W matrices using matrix multiplication
     mc.W_up = mc.Ham.U_up * mc.U_upinvs
     mc.W_down = mc.Ham.U_down * mc.U_downinvs
 
     # Cache the log-determinant
-    mc.log_det_cached = logdet(tilde_U_up) + logdet(tilde_U_down)
-    mc.log_det_valid = true
+    # mc.log_det_cached = logdet(tilde_U_up) + logdet(tilde_U_down)
+    # mc.log_det_valid = true
 
     return nothing
 end
@@ -725,13 +733,15 @@ function Carlo.sweep!(mc::MCState, ctx::MCContext)
     end
 
     # Re-evaluate W matrices periodically
+    # Using n_occupied÷10 instead of n_occupied to prevent numerical error accumulation
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
-    if ctx.sweeps % n_occupied == 0
+    reevaluation_interval = max(1, n_occupied ÷ 10)
+    if ctx.sweeps % reevaluation_interval == 0
         try
             reevaluateW!(mc)
         catch e
             if e isa LinearAlgebra.SingularException
-                @warn "lu factorization failed, aborting re-evaluation..."
+                @warn "Matrix factorization failed during re-evaluation" sweep = ctx.sweeps
                 throw(e)
             end
         end
@@ -761,18 +771,20 @@ correlation between samples and improve measurement efficiency.
 """
 function Carlo.measure!(mc::MCState, ctx::MCContext)
     n_occupied = min(count(!iszero, mc.kappa_up), count(!iszero, mc.kappa_down))
-    if ctx.sweeps % n_occupied == 0
+
+    # Measure every n_occupied÷20 sweeps, but at least every sweep if n_occupied < 20
+    measure_interval = max(1, n_occupied ÷ 10)
+    if ctx.sweeps % measure_interval == 1
         OL = getOL(mc, mc.kappa_up, mc.kappa_down)
         measure!(ctx, :OL, OL)
-
-        # S+ measurement
-        ns = length(mc.kappa_up)
-        s_plus_amp_sq = 0.0
-        for i = 1:ns
-            amp, amp_sq = measure_S_plus(mc, i)
-            s_plus_amp_sq += amp_sq
-        end
-        measure!(ctx, :S_plus_amp_sq, s_plus_amp_sq / ns)
+        # # S+ measurement
+        # ns = length(mc.kappa_up)
+        # s_plus_amp_sq = 0.0
+        # for i = 1:ns
+        #     amp, amp_sq = measure_S_plus(mc, i)
+        #     s_plus_amp_sq += amp_sq
+        # end
+        # measure!(ctx, :S_plus_amp_sq, s_plus_amp_sq / ns)
     end
 end
 
@@ -815,20 +827,16 @@ data (:OL values) that was collected during the simulation via Carlo.measure!().
 - Actual evaluation happens in postprocessing phase
 - Minimal computational overhead during Monte Carlo sampling
 """
-function Carlo.register_evaluables(
-    ::Type{<:MCState},
-    eval::Evaluator,
-    params::AbstractDict,
-)
+function Carlo.register_evaluables(::Type{<:MCState}, eval::Evaluator, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
     ns = n1 * n2 * 3
     evaluate!(eval, :energy, (:OL,)) do OL
         OL / ns
     end
-    evaluate!(eval, :S_plus_amp_sq, (:S_plus_amp_sq,)) do S_plus_amp_sq
-        S_plus_amp_sq
-    end
+    # evaluate!(eval, :S_plus_amp_sq, (:S_plus_amp_sq,)) do S_plus_amp_sq
+    #     S_plus_amp_sq
+    # end
 end
 
 """

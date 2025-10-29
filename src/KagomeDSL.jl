@@ -2,8 +2,6 @@ module KagomeDSL
 
 using Carlo, Random, LinearAlgebra, HDF5, StatsBase
 
-abstract type AbstractLattice end
-
 export AbstractLattice, DoubleKagome, Honeycomb
 export Hamiltonian,
     MCState,
