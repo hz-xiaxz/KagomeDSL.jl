@@ -1,7 +1,7 @@
 name = "KagomeDSL"
 uuid = "d7336a9d-6a7f-533d-babd-3df937e6f042"
-authors = ["hzxiaxz <hzxiaxz@gmail.com>"]
 version = "0.1.0"
+authors = ["hzxiaxz <hzxiaxz@gmail.com>"]
 
 [deps]
 Carlo = "780c37f4-4e5a-43de-9e79-65c261e525a4"
@@ -12,7 +12,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
-Carlo = "0.2.1"
+Carlo = "0.2.1, 0.3"
 HDF5 = "0.17.2"
 MKL = "0.9.0"
 StatsBase = "0.34.3"
