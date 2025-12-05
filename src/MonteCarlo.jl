@@ -573,7 +573,7 @@ non-singular configuration using QR-based initialization.
 This function integrates with the Carlo.jl framework and is called automatically
 during simulation initialization to prepare the Monte Carlo state.
 """
-function Carlo.init!(mc::MCState, ctx::MCContext, params::AbstractDict)
+function Carlo.init!(mc::MCState, ::MCContext, params::AbstractDict)
     n1 = params[:n1]
     n2 = params[:n2]
     ns = n1 * n2 * 3
