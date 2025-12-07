@@ -1,20 +1,19 @@
 module KagomeDSL
-using LinearAlgebra
-using StatsBase
-using Random
-using Carlo
-using HDF5
-import LinearAlgebra.BLAS: geru!
-using MKL
-MKL.set_num_threads(1)  # Set MKL to use only one thread for reproducibility
-@info BLAS.get_config()
 
-export DoubleKagome
+using Carlo, Random, LinearAlgebra, HDF5, StatsBase
+
+export AbstractLattice, DoubleKagome, Honeycomb
+export Hamiltonian,
+    MCState,
+    Sz,
+    getxprime,
+    AbstractOperator,
+    SpinPlusOperator,
+    measure_S_plus,
+    calculate_log_det_ratio_spin_plus
+
 include("Lattice.jl")
-
-export Hamiltonian, fast_update, Sz, spinInteraction!
 include("Hamiltonian.jl")
-
-export MC, MCContext, tilde_U
 include("MonteCarlo.jl")
+
 end
