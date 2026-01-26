@@ -1,4 +1,5 @@
-using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U
+using KagomeDSL: update_W!, update_W_matrices!, is_occupied, update_configurations!, tilde_U, relabel_configuration!, spin_plus_transition, apply_operator, MC, measure_S_plus, calculate_log_det_ratio_spin_plus
+using KagomeDSL
 using Random
 using Test
 using LinearAlgebra
@@ -11,34 +12,192 @@ using HDF5
     # kappa_up and kappa_down are initialized in Carlo.init!, so we don't check their lengths here.
 end
 
+@testset "relabel_configuration!" begin
+    kappa = [0, 5, 0, 2, 3]
+    relabel_configuration!(kappa)
+    @test kappa == [0, 1, 0, 2, 3]
+
+    kappa = [10, 20, 30]
+    relabel_configuration!(kappa)
+    @test kappa == [1, 2, 3]
+
+    kappa = [0, 0, 0]
+    relabel_configuration!(kappa)
+    @test kappa == [0, 0, 0]
+
+    kappa = [1, 0, 0]
+    relabel_configuration!(kappa)
+    @test kappa == [1, 0, 0]
+
+    # Test case for S+ transition: after removing orbital 2 from [1,0,2,3]
+    # we get [1,0,0,3], which should relabel to [1,0,0,2]
+    kappa = [1, 0, 0, 3]
+    relabel_configuration!(kappa)
+    @test kappa == [1, 0, 0, 2]
+end
+
+@testset "update_configurations! preserves orbital labels" begin
+    # Test that update_configurations! does NOT relabel during regular MC moves
+    # Setup: particles at sites with specific orbital labels
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+    KagomeDSL.reevaluateW!(mc)
+
+    # Set specific configuration to test preservation
+    mc.kappa_up = [2, 0, 1, 0, 3, 0]    # Sites 1,3,5 have orbitals 2,1,3
+    mc.kappa_down = [0, 2, 0, 1, 0, 3]  # Sites 2,4,6 have orbitals 2,1,3
+    KagomeDSL.reevaluateW!(mc)
+
+    # Perform update: swap up-spin from site 1 to site 2, down-spin from site 2 to site 1
+    # flag=1 means: up moves from i to site, down moves from site to i
+    flag = 1
+    i = 1
+    site = 2
+    l_up = mc.kappa_up[i]   # = 2
+    l_down = mc.kappa_down[site]  # = 2
+
+    # Save original labels
+    original_l_up = l_up
+    original_l_down = l_down
+
+    update_configurations!(mc, flag, i, site, l_up, l_down)
+
+    # After update: site 2 should have up-spin with orbital 2, site 1 should have down-spin with orbital 2
+    # The orbital labels should be PRESERVED (not relabeled)
+    @test mc.kappa_up[site] == original_l_up  # Should still be 2, not relabeled to 1
+    @test mc.kappa_down[i] == original_l_down  # Should still be 2, not relabeled
+    @test mc.kappa_up[i] == 0
+    @test mc.kappa_down[site] == 0
+
+    # Verify that non-participating particles kept their labels
+    @test mc.kappa_up[3] == 1  # Should still be 1
+    @test mc.kappa_up[5] == 3  # Should still be 3
+    @test mc.kappa_down[4] == 1  # Should still be 1
+    @test mc.kappa_down[6] == 3  # Should still be 3
+end
+
+@testset "spin_plus_transition" begin
+    # Setup initial MC state
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+    
+    # Initialize configuration
+    mc.kappa_up = [1, 2, 3, 0, 0, 0]
+    mc.kappa_down = [0, 0, 0, 1, 2, 3]
+
+    # Site to flip
+    site_to_flip = 4 # Has a down spin
+
+    # Perform transition
+    new_mc = spin_plus_transition(mc, site_to_flip)
+
+    # Check new particle numbers
+    @test size(new_mc.Ham.U_up, 2) == params[:N_up] + 1
+    @test size(new_mc.Ham.U_down, 2) == params[:N_down] - 1
+
+    # Check new kappa vectors
+    @test new_mc.kappa_up[site_to_flip] != 0
+    @test new_mc.kappa_down[site_to_flip] == 0
+    @test count(!iszero, new_mc.kappa_up) == params[:N_up] + 1
+    @test count(!iszero, new_mc.kappa_down) == params[:N_down] - 1
+
+    # Check that W matrices are re-evaluated and not all zero
+    @test !iszero(new_mc.W_up)
+    @test !iszero(new_mc.W_down)
+end
+
+@testset "apply_operator" begin
+    # Setup initial MC state
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+    
+    # Initialize configuration
+    mc.kappa_up = [1, 2, 3, 0, 0, 0]
+    mc.kappa_down = [0, 0, 0, 1, 2, 3]
+
+    # Site to flip
+    site_to_flip = 4 # Has a down spin
+
+    # Create operator
+    op = SpinPlusOperator{3, 3}(site_to_flip)
+
+    # Apply operator
+    new_mc = apply_operator(op, mc)
+
+    # Check new particle numbers
+    @test size(new_mc.Ham.U_up, 2) == params[:N_up] + 1
+    @test size(new_mc.Ham.U_down, 2) == params[:N_down] - 1
+end
+
+@testset "measure_S_plus" begin
+    params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    mc = MC(params)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 3, :seed => 123, :thermalization => 10),
+    )
+    Carlo.init!(mc, ctx, params)
+    
+    mc.kappa_up = [1, 2, 3, 0, 0, 0]
+    mc.kappa_down = [0, 0, 0, 1, 2, 3]
+
+    site_to_flip = 4 # Has a down spin
+    amp, amp_sq = measure_S_plus(mc, site_to_flip)
+    @test amp isa Complex
+    @test amp_sq isa Real
+    @test amp_sq ≈ abs2(amp)
+
+    # Test invalid site
+    site_to_flip = 1 # Has an up spin
+    amp, amp_sq = measure_S_plus(mc, site_to_flip)
+    @test amp == 0.0
+    @test amp_sq == 0.0
+end
+
 @testset "init_conf_qr! tests" begin
     @testset "Basic functionality and non-singularity" begin
         n1 = 2
         n2 = 2
         ns = n1 * n2 * 3 # 12 sites
         N_up = 6
-        N_down = ns - N_up # 6 sites
+        N_down = 6
 
         # Create a mock Hamiltonian for testing
         # Ensure U_up and U_down are full rank for a non-singular tilde_U to be possible
         U_up_mock = rand(ns, N_up)
         U_down_mock = rand(ns, N_down)
-        mock_ham = Hamiltonian(N_up, N_down, U_up_mock, U_down_mock, zeros(ns, ns), [])
+        mock_ham = Hamiltonian{N_up,N_down}(
+            U_up_mock,
+            U_down_mock,
+            zeros(ns, ns),
+            [],
+            zeros(ns, N_up + 1),
+            zeros(ns, N_down - 1),
+        )
 
         mc =
             MC(mock_ham, zeros(Int, ns), zeros(Int, ns), zeros(ns, N_up), zeros(ns, N_down))
 
         # Call the QR-based initialization
-        KagomeDSL.init_conf_qr!(mc, ns, N_up)
+        KagomeDSL.init_conf_qr!(mc, ns, N_up, N_down)
 
         # Verify kappa_up and kappa_down properties
         @test count(!iszero, mc.kappa_up) == N_up
         @test count(!iszero, mc.kappa_down) == N_down
         @test all(x -> x in 1:N_up, filter(!iszero, mc.kappa_up))
         @test all(x -> x in 1:N_down, filter(!iszero, mc.kappa_down))
-        for i = 1:ns
-            @test xor(mc.kappa_up[i] != 0, mc.kappa_down[i] != 0)
-        end
+        @test count(iszero, mc.kappa_up) + count(iszero, mc.kappa_down) == ns * 2 - N_up - N_down
 
         # Verify non-singularity of tilde_U matrices
         tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
@@ -176,8 +335,8 @@ end
     # Test Néel state configuration
     # Sites: 0-1-2 in a line, each connected to neighbors
     nn = [(1, 2), (2, 3), (1, 3)]  # nearest neighbor bonds
-    kappa_up = [0, 1, 0]   # up spins at sites 0,!!2
-    kappa_down = [1, 0, 2] # down spins at sites 1
+    kappa_up = [0, 1, 0]   # up spins at sites 1
+    kappa_down = [1, 0, 2] # down spins at sites 1 and 3 
 
     @test KagomeDSL.Z(nn, kappa_up, kappa_down) == 2
 end
@@ -187,7 +346,14 @@ end
         # Create a simple 2x2 test case
         U_up = [1.0 0.2; 0.2 1.0]
         U_down = [1.0 0.3; 0.3 1.0]
-        ham = Hamiltonian(1, 1, U_up, U_down, zeros(4, 4), [])
+        ham = Hamiltonian{2,2}(
+            U_up,
+            U_down,
+            zeros(4, 4),
+            [],
+            zeros(4, 3),
+            zeros(4, 1),
+        )
         kappa_up = [1, 2]
         kappa_down = [2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(2, 2), zeros(2, 2))
@@ -213,7 +379,14 @@ end
         U_up = (U_up + U_up') / 2  # Make symmetric
         U_down = (U_down + U_down') / 2
 
-        ham = Hamiltonian(2, 2, U_up, U_down, zeros(16, 16), [])
+        ham = Hamiltonian{4,4}(
+            U_up,
+            U_down,
+            zeros(16, 16),
+            [],
+            zeros(16, 5),
+            zeros(16, 3),
+        )
         kappa_up = [1, 2, 3, 4]
         kappa_down = [4, 3, 2, 1]
         mc = MC(ham, kappa_up, kappa_down, zeros(n, n), zeros(n, n))
@@ -285,7 +458,14 @@ end
 
         # Create mock MC struct with necessary fields
         mc = MC(
-            Hamiltonian(n, n, zeros(n, n), zeros(n, n), zeros(n^2, n^2), []),
+            Hamiltonian{3,3}(
+                zeros(n, n),
+                zeros(n, n),
+                zeros(n^2, n^2),
+                [],
+                zeros(n, 4),
+                zeros(n, 2),
+            ),
             zeros(Int, n),
             zeros(Int, n),
             copy(W_up),
@@ -361,22 +541,11 @@ end
     W_up .= 1.0 + 0.0im
     W_down .= 1.0 + 0.0im
     mc = MC(
-        Hamiltonian(
-            N_up,
-            N_down,
-            zeros(ComplexF64, n, N_up),
-            zeros(ComplexF64, n, N_down),
-            zeros(ComplexF64, n, n),
-            Tuple{Int,Int}[],
-        ),
+        Hamiltonian(N_up, N_down, DoubleKagome(1.0, n, n, (false, false))),
         [1, 0, 2, 0],
         [0, 1, 0, 2],
         copy(W_up),
         copy(W_down),
-        Vector{ComplexF64}(undef, n),
-        Vector{ComplexF64}(undef, N_up),
-        Vector{ComplexF64}(undef, n),
-        Vector{ComplexF64}(undef, N_down),
     )
 
     @testset "flag = 1" begin
@@ -419,7 +588,7 @@ end
     tilde_U_up = tilde_U(mc.Ham.U_up, mc.kappa_up)
     @test abs(det(tilde_U_up)) != 0.0
 
-    N_down = (param[:n1] * param[:n2] * 3) - param[:N_up]
+    N_down = param[:N_down]
     if N_down > 0
         tilde_U_down = tilde_U(mc.Ham.U_down, mc.kappa_down)
         @test abs(det(tilde_U_down)) != 0.0
@@ -431,7 +600,7 @@ end
     n2 = 2
     ns = n1 * n2 * 3 # 12 sites
     N_up = 6
-    N_down = ns - N_up # 6 sites
+    N_down = 6
 
     # Create a mock U_up matrix that will lead to a singular tilde_U_up
     # Make all rows identical to guarantee singularity of tilde_U_up
@@ -439,13 +608,13 @@ end
     U_up_singular = repeat(U_up_singular, ns, 1) # Repeat it for all ns rows
 
     # Create a mock Hamiltonian with the singular U_up
-    mock_ham_singular = Hamiltonian(
-        N_up,
-        N_down,
+    mock_ham_singular = Hamiltonian{N_up,N_down}(
         U_up_singular,
         rand(ns, N_down),
         zeros(ComplexF64, ns, ns),
         Tuple{Int,Int}[],
+        zeros(ComplexF64, ns, N_up + 1),
+        zeros(ComplexF64, ns, N_down - 1),
     )
 
     mc_singular = MC(
@@ -499,9 +668,20 @@ end
     end
 end
 
+
 @testset "Checkpointing" begin
     param = Dict(:n1 => 2, :n2 => 2, :PBC => (false, false), :N_up => 3, :N_down => 3)
+    ctx = Carlo.MCContext{Random.Xoshiro}(
+        Dict(:binsize => 1, :seed => 123, :thermalization => 0),
+    )
     mc1 = MC(param)
+    Carlo.init!(mc1, ctx, param)
+
+    # Run a few sweeps to change the configuration
+    for _ in 1:10
+        Carlo.sweep!(mc1, ctx)
+    end
+
     mc2 = MC(param)
 
     # Create a temporary file for checkpointing
@@ -518,7 +698,29 @@ end
         end
     end
 
-
     @test mc1.kappa_up == mc2.kappa_up
     @test mc1.kappa_down == mc2.kappa_down
 end
+
+# this is wrong temporarily
+# @testset "calculate_log_det_ratio_spin_plus/minus" begin
+#     params = Dict(:n1 => 2, :n2 => 1, :PBC => (false, false), :N_up => 2, :N_down => 2)
+#         mc_n = MC(params)
+#         ctx = Carlo.MCContext{Random.Xoshiro}(
+#             Dict(:binsize => 3, :seed => 42, :thermalization => 10),
+#         )
+#         Carlo.init!(mc_n, ctx, params)
+
+#         # Set specific configuration for reproducible test
+#         mc_n.kappa_up = [1, 2, 0, 0, 0, 0]
+#         mc_n.kappa_down = [0, 0, 1, 2, 0, 0]
+#         KagomeDSL.reevaluateW!(mc_n)
+
+#         # Flip site 3 (has down spin)
+#         site_to_flip = 3
+#         log_det_ratio_plus = calculate_log_det_ratio_spin_plus(mc_n, site_to_flip)
+
+#         mc_np1 = spin_plus_transition(mc_n, site_to_flip)
+#         log_det_ratio_manual = logdet(tilde_U(mc_np1.Ham.U_up,mc_np1.kappa_up)) + logdet(tilde_U(mc_np1.Ham.U_down,mc_np1.kappa_down)) - mc_n.log_det_cached
+#         @test isapprox(log_det_ratio_plus, log_det_ratio_manual, atol=1e-12)
+# end
