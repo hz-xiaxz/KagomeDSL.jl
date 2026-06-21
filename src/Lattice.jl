@@ -71,7 +71,6 @@ function DoubleKagome(
     n2::Int,
     PBC::Tuple{Bool,Bool};
     antiPBC::Tuple{Bool,Bool} = (false, false),
-    trunc::Float64 = Inf,
 )
     validate_boundary_conditions(PBC, antiPBC)
     @assert n1 % 2 == 0 "n1 must be even in DoubleKagome"
