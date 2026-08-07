@@ -384,7 +384,6 @@ function orbitals(H_mat::Matrix{ComplexF64}, N_up::Int, N_down::Int)
     # get sampling ensemble U_up and U_down
     F = eigen(Hermitian(H_mat))
     p = sortperm(F.values)
-    evalues = F.values[p]
     evecs = F.vectors[:, p]
     # select N lowest eigenvectors as the sampling ensemble
     U_up = evecs[:, 1:N_up]
@@ -417,13 +416,13 @@ Monte Carlo calculations of quantum spin liquid properties:
 - Represents a quantum spin liquid state where spins are fractionalized
 - Correlations arise from quantum fluctuations around the mean-field state
 """
-struct Hamiltonian
-    N_up::Int
-    N_down::Int
+struct Hamiltonian{N_up,N_down}
     U_up::Matrix{ComplexF64}
     U_down::Matrix{ComplexF64}
     H_mat::Matrix{ComplexF64}
     nn::AbstractArray
+    U_up_plus::Matrix{ComplexF64}     # For S+ transitions: N_up -> N_up+1
+    U_down_minus::Matrix{ComplexF64}  # For S+ transitions: N_down -> N_down-1
 end
 
 """    
@@ -446,8 +445,21 @@ efficient Monte Carlo sampling since we only need to consider active bonds.
 """
 function get_nn(H_mat::AbstractMatrix)
     # Get upper triangular non-zero elements
-    indices = findall(!iszero, UpperTriangular(H_mat))
-    return [(i[1], i[2]) for i in indices]
+    nn = Tuple{Int,Int}[]
+    for j in axes(H_mat, 2)
+        for i = 1:(j-1)
+            if !iszero(H_mat[i, j])
+                push!(nn, (i, j))
+            end
+        end
+    end
+    return nn
+end
+
+abstract type AbstractOperator end
+
+struct SpinPlusOperator{N_up,N_down} <: AbstractOperator
+    site::Int
 end
 
 
@@ -480,15 +492,40 @@ This is the main constructor that builds everything needed for SSE Monte Carlo:
 function Hamiltonian(
     N_up::Int,
     N_down::Int,
-    lat::T;
+    lat::AbstractLattice;
     link_in = pi_link_in,
     link_inter = pi_link_inter,
     B = 0.0,
-) where {T<:AbstractLattice}
+)
+    return Hamiltonian(
+        Val(N_up),
+        Val(N_down),
+        lat;
+        link_in = link_in,
+        link_inter = link_inter,
+        B = B,
+    )
+end
+
+function Hamiltonian(
+    ::Val{N_up},
+    ::Val{N_down},
+    lat::AbstractLattice;
+    link_in = pi_link_in,
+    link_inter = pi_link_inter,
+    B = 0.0,
+) where {N_up,N_down}
     H_mat = Hmat(lat; link_in = link_in, link_inter = link_inter, B = B)
     U_up, U_down = orbitals(H_mat, N_up, N_down)
+
+    @assert N_down >= 0 "N_down must be non-negative, got: $N_down"
+    @assert N_up >= 0 "N_up must be non-negative, got: $N_up"
+
+    # Pre-compute orbitals for neighboring sectors needed for S+ transitions
+    U_up_plus, U_down_minus = orbitals(H_mat, N_up + 1, N_down - 1)
+
     nn = get_nn(H_mat)
-    return Hamiltonian(N_up, N_down, U_up, U_down, H_mat, nn)
+    return Hamiltonian{N_up,N_down}(U_up, U_down, H_mat, nn, U_up_plus, U_down_minus)
 end
 
 
@@ -524,11 +561,10 @@ spinon per site: n_{i↑} + n_{i↓} = 1 (no double occupancy or empty sites).
 - The spinon constraint is fundamental to the validity of the spin liquid state
 
 # Performance Notes
-- Marked @inline for performance in Monte Carlo loops
 - Uses @boundscheck for optional bounds checking
 - Calls is_occupied() helper function for spinon occupancy detection
 """
-@inline function Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+function Sz(i::Int, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     # Bounds check
     n = length(kappa_up)
     @boundscheck begin
@@ -640,10 +676,10 @@ function spinInteraction!(
     i::Int,
     j::Int,
 )
-    i_up = @inbounds kappa_up[i]
-    j_up = @inbounds kappa_up[j]
-    i_down = @inbounds kappa_down[i]
-    j_down = @inbounds kappa_down[j]
+    i_up = kappa_up[i]
+    j_up = kappa_up[j]
+    i_down = kappa_down[i]
+    j_down = kappa_down[j]
     # Case 1: S+_i S-_j
     # j has up spin (kappa_up[j] ≠ 0) and i has down spin (kappa_down[i] ≠ 0)
     if j_up != 0 && i_down != 0
@@ -708,71 +744,13 @@ The result is H|κ⟩ = Σ_κ' xprime[κ'] |κ'⟩, where xprime encodes the exp
 - The Hamiltonian H is the original Heisenberg model, not the mean-field one
 - Combines both diagonal (Ising) and off-diagonal (transverse) contributions
 """
-@inline function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
+function getxprime(Ham::Hamiltonian, kappa_up::Vector{Int}, kappa_down::Vector{Int})
     nn = Ham.nn
     xprime = Dict{NTuple{4,Int},Float64}()
     # just scan through all the bonds
-    @inbounds for bond in nn
+    for bond in nn
         spinInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
         SzInteraction!(xprime, kappa_up, kappa_down, bond[1], bond[2])
     end
     return xprime
-end
-
-@doc raw"""    
-    getOL(mc::AbstractMC, kappa_up, kappa_down) -> Float64
-
-Compute the local energy estimator for quantum Monte Carlo.
-
-Calculates the observable O_L = ⟨x|H|ψ_G⟩/⟨x|ψ_G⟩, which provides an unbiased
-estimator of the ground state energy in the Stochastic Series Expansion method.
-
-In the spinon mean-field framework:
-- |ψ_G⟩ is the Slater Determinant spinon state (Gutzwiller projected)
-- |x⟩ = |κ_up⟩ ⊗ |κ_down⟩ is a particular spinon configuration
-- H is the original Heisenberg Hamiltonian (not the mean-field one!)
-
-The ratio gives the local contribution to the energy from configuration |x⟩.
-
-# Arguments
-- `mc::AbstractMC`: Monte Carlo state containing W_up, W_down matrices
-- `kappa_up::Vector{Int}`: Current up-spinon configuration
-- `kappa_down::Vector{Int}`: Current down-spinon configuration
-
-# Returns
-- `Float64`: Local energy contribution from this configuration
-
-# Algorithm
-1. Compute H|x⟩ using getxprime() to get all reachable configurations
-2. For diagonal terms: directly add the Ising contributions
-3. For off-diagonal terms: weight by the wavefunction amplitude ratios W_up, W_down
-4. Sum all contributions to get the local energy
-
-# Physics Notes
-- This is the "local energy" in variational Monte Carlo terminology
-- Fluctuations in O_L reflect the quality of the trial wavefunction
-- Used to measure energy and other observables in quantum spin liquids
-- The Hamiltonian H must be the original physical one, not the mean-field approximation
-
-# Performance Notes
-- Critical function called in every Monte Carlo step
-- Bounds checking disabled with @inbounds for performance
-- Uses efficient iteration over pairs() for dictionary access
-"""
-@inline function getOL(mc::AbstractMC, kappa_up::Vector{Int}, kappa_down::Vector{Int})
-    @assert length(kappa_up) == length(kappa_down) "The length of the up and down configurations should be the same, got: $(length(kappa_up)) and $(length(kappa_down))"
-    # if double occupied state, no possibility to have a non-zero overlap
-
-    OL = 0.0
-    xprime = getxprime(mc.Ham, kappa_up, kappa_down)
-    @inbounds for (conf, coff) in pairs(xprime)
-        if conf == (-1, -1, -1, -1)
-            OL += coff
-        else
-            update_up = mc.W_up[conf[1], conf[2]]
-            update_down = mc.W_down[conf[3], conf[4]]
-            OL += coff * update_up * update_down
-        end
-    end
-    return real(OL)
 end
